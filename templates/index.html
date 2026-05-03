@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YT 演講摘要 Dashboard</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 17px;
+      background: #f9fafb;
+      color: #111827;
+      min-width: 320px;
+    }
+
+    /* ── Header ── */
+    header {
+      background: #fff;
+      border-bottom: 1px solid #e5e7eb;
+      padding: 20px 24px;
+    }
+    header h1 {
+      font-size: 1.4em;
+      font-weight: 700;
+      color: #1a6bc4;
+      margin-bottom: 2px;
+    }
+    header p.meta { font-size: 0.85em; color: #6b7280; }
+
+    /* ── Convert box ── */
+    .convert-box {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 20px;
+      margin: 20px 24px 0;
+    }
+    .convert-box h2 { font-size: 1em; font-weight: 600; margin-bottom: 12px; }
+    .convert-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .convert-row input[type="text"] {
+      flex: 1;
+      min-width: 220px;
+      padding: 9px 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-size: 0.9em;
+      outline: none;
+    }
+    .convert-row input[type="text"]:focus { border-color: #1a6bc4; }
+    .btn-convert {
+      padding: 9px 20px;
+      background: #1a6bc4;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.9em;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .btn-convert:disabled {
+      background: #93c5fd;
+      cursor: not-allowed;
+    }
+    .btn-convert:hover:not(:disabled) { background: #1558a8; }
+
+    /* ── Progress ── */
+    .progress-area { margin-top: 14px; display: none; }
+    .progress-area.visible { display: block; }
+    .progress-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.82em;
+      color: #6b7280;
+      margin-bottom: 5px;
+    }
+    .progress-bar-bg {
+      height: 8px;
+      background: #e5e7eb;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: #1a6bc4;
+      border-radius: 4px;
+      transition: width 0.4s ease;
+    }
+    .progress-step-name {
+      font-size: 0.85em;
+      color: #374151;
+      margin-top: 6px;
+    }
+    .progress-done {
+      margin-top: 8px;
+      font-size: 0.85em;
+      color: #059669;
+      font-weight: 600;
+    }
+    .progress-error {
+      margin-top: 8px;
+      font-size: 0.85em;
+      color: #dc2626;
+    }
+
+    /* ── Filter bar ── */
+    .filter-bar {
+      margin: 20px 24px 12px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: flex-start;
+    }
+    .filter-search {
+      padding: 8px 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-size: 0.88em;
+      min-width: 200px;
+      flex: 1;
+      outline: none;
+    }
+    .filter-search:focus { border-color: #1a6bc4; }
+    .tag-filter-wrap {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+      flex: 2;
+    }
+    .tag-chip {
+      padding: 4px 10px;
+      border: 1px solid #d1d5db;
+      border-radius: 20px;
+      font-size: 0.78em;
+      cursor: pointer;
+      background: #f3f4f6;
+      color: #374151;
+      user-select: none;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .tag-chip:hover { background: #e5e7eb; }
+    .tag-chip.active {
+      background: #dbeafe;
+      border-color: #1a6bc4;
+      color: #1a6bc4;
+      font-weight: 600;
+    }
+    .btn-clear {
+      padding: 5px 12px;
+      font-size: 0.8em;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      background: #fff;
+      color: #6b7280;
+      cursor: pointer;
+    }
+    .btn-clear:hover { background: #f3f4f6; }
+
+    /* ── Category sections ── */
+    .section {
+      margin: 0 24px 24px;
+    }
+    .section-title {
+      font-size: 0.95em;
+      font-weight: 700;
+      color: #374151;
+      margin-bottom: 12px;
+      padding-bottom: 6px;
+      border-bottom: 2px solid #e5e7eb;
+    }
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 14px;
+    }
+
+    /* ── Card（預設收摺，點擊 header 展開） ── */
+    .card {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      transition: box-shadow 0.15s;
+    }
+    .card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+    .card.hidden { display: none; }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 16px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .card-title-text {
+      flex: 1;
+      font-size: 1.02em;
+      font-weight: 600;
+      color: #111827;
+      line-height: 1.4;
+    }
+    .card-actions {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .mindmap-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 6px;
+      border-radius: 6px;
+      color: #1a6bc4;
+      text-decoration: none;
+      transition: background 0.15s;
+    }
+    .mindmap-btn:hover { background: #dbeafe; }
+    .card-arrow {
+      display: inline-block;
+      width: 20px;
+      text-align: center;
+      color: #9ca3af;
+      font-size: 0.95em;
+      transition: transform 0.2s;
+    }
+    .card.expanded .card-arrow { transform: rotate(90deg); }
+
+    .card-body {
+      display: none;
+      padding: 12px 16px 14px;
+      border-top: 1px solid #f3f4f6;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .card.expanded .card-body { display: flex; }
+
+    .card-pitch {
+      font-size: 0.92em;
+      color: #4b5563;
+      line-height: 1.55;
+    }
+    .card-meta {
+      font-size: 0.85em;
+      color: #9ca3af;
+    }
+    .card-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+    }
+    .card-tag {
+      padding: 3px 9px;
+      background: #f3f4f6;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      font-size: 0.82em;
+      color: #6b7280;
+    }
+
+    /* ── Empty state ── */
+    .no-results {
+      text-align: center;
+      padding: 40px;
+      color: #9ca3af;
+      font-size: 0.9em;
+      display: none;
+    }
+    .no-results.visible { display: block; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>YT 演講摘要 Dashboard</h1>
+  <p class="meta">共 {{ total }} 篇 · 第一性原理摘要 + 互動心智圖</p>
+</header>
+
+<!-- Convert box -->
+<div class="convert-box">
+  <h2>轉換新影片</h2>
+  <div class="convert-row">
+    <input type="text" id="yt-url" placeholder="貼入 YouTube URL…" />
+    <button class="btn-convert" id="btn-convert" onclick="startConvert()">轉換</button>
+  </div>
+
+  <div class="progress-area" id="progress-area">
+    <div class="progress-label">
+      <span id="step-name">準備中…</span>
+      <span id="step-counter">0 / 9</span>
+    </div>
+    <div class="progress-bar-bg">
+      <div class="progress-bar-fill" id="progress-fill" style="width:0%"></div>
+    </div>
+    <div class="progress-step-name" id="progress-sub"></div>
+    <div class="progress-done" id="progress-done" style="display:none">
+      ✓ 完成！正在重新載入卡片…
+    </div>
+    <div class="progress-error" id="progress-error" style="display:none"></div>
+  </div>
+</div>
+
+<!-- Filter bar -->
+<div class="filter-bar">
+  <input type="text" class="filter-search" id="filter-search"
+         placeholder="搜尋標題 / 講者 / tag…"
+         oninput="applyFilter()" />
+  <div class="tag-filter-wrap" id="tag-chips">
+    {% for tag in all_tags %}
+    <span class="tag-chip" data-tag="{{ tag }}" onclick="toggleTag(this)">{{ tag }}</span>
+    {% endfor %}
+    <button class="btn-clear" onclick="clearFilter()">清除過濾</button>
+  </div>
+</div>
+
+<!-- Card sections (server-rendered) -->
+<div id="card-container">
+{% for group in groups %}
+<div class="section" data-category="{{ group.category }}">
+  <div class="section-title">{{ group.category }}（{{ group.entries | length }}）</div>
+  <div class="card-grid">
+    {% for item in group.entries %}
+    <div class="card"
+         data-title="{{ item.filename }}"
+         data-speaker="{{ item.speaker }}"
+         data-tags="{{ item.tags | join(',') }}">
+      <div class="card-header" onclick="toggleCard(this)">
+        <span class="card-title-text">{{ item.filename }}</span>
+        <div class="card-actions">
+          {% if item.markmap_url %}
+          <a href="{{ item.markmap_url }}" target="_blank" class="mindmap-btn"
+             title="開心智圖" onclick="event.stopPropagation()">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="1.8"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="2"/>
+              <circle cx="4" cy="5" r="1.5"/>
+              <circle cx="4" cy="19" r="1.5"/>
+              <circle cx="20" cy="5" r="1.5"/>
+              <circle cx="20" cy="19" r="1.5"/>
+              <path d="M5.5 6 L10 11"/>
+              <path d="M5.5 18 L10 13"/>
+              <path d="M18.5 6 L14 11"/>
+              <path d="M18.5 18 L14 13"/>
+            </svg>
+          </a>
+          {% endif %}
+          <span class="card-arrow">▸</span>
+        </div>
+      </div>
+      <div class="card-body">
+        {% if item.elevator_pitch %}
+        <div class="card-pitch">{{ item.elevator_pitch }}</div>
+        {% endif %}
+        <div class="card-meta">{{ item.speaker }} · {{ item.duration }}</div>
+        {% if item.tags %}
+        <div class="card-tags">
+          {% for t in item.tags %}
+          <span class="card-tag">{{ t }}</span>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endfor %}
+</div>
+
+<div class="no-results" id="no-results">沒有符合的摘要</div>
+
+<script>
+// ── Filter logic ────────────────────────────────────────────────────────────
+let activeTags = new Set();
+
+function toggleTag(el) {
+  const tag = el.dataset.tag;
+  if (activeTags.has(tag)) {
+    activeTags.delete(tag);
+    el.classList.remove('active');
+  } else {
+    activeTags.add(tag);
+    el.classList.add('active');
+  }
+  applyFilter();
+}
+
+function clearFilter() {
+  activeTags.clear();
+  document.querySelectorAll('.tag-chip.active').forEach(c => c.classList.remove('active'));
+  document.getElementById('filter-search').value = '';
+  applyFilter();
+}
+
+// ── Card collapse / expand ────────────────────────────────────────────────
+function toggleCard(headerEl) {
+  const card = headerEl.closest('.card');
+  card.classList.toggle('expanded');
+}
+
+function applyFilter() {
+  const q = document.getElementById('filter-search').value.toLowerCase().trim();
+  const cards = document.querySelectorAll('.card');
+  let visibleCount = 0;
+
+  cards.forEach(card => {
+    const title = (card.dataset.title || '').toLowerCase();
+    const speaker = (card.dataset.speaker || '').toLowerCase();
+    const tags = (card.dataset.tags || '').toLowerCase().split(',');
+
+    const matchText = !q || title.includes(q) || speaker.includes(q)
+      || tags.some(t => t.includes(q));
+
+    const matchTags = activeTags.size === 0
+      || [...activeTags].some(t => tags.includes(t.toLowerCase()));
+
+    if (matchText && matchTags) {
+      card.classList.remove('hidden');
+      visibleCount++;
+    } else {
+      card.classList.add('hidden');
+    }
+  });
+
+  // Hide/show section titles based on whether any card in the section is visible
+  document.querySelectorAll('.section').forEach(section => {
+    const anyVisible = [...section.querySelectorAll('.card')]
+      .some(c => !c.classList.contains('hidden'));
+    section.style.display = anyVisible ? '' : 'none';
+  });
+
+  document.getElementById('no-results').classList.toggle('visible', visibleCount === 0);
+}
+
+// ── Convert / progress ──────────────────────────────────────────────────────
+let _pollTimer = null;
+const TOTAL_STEPS = 9;
+
+function startConvert() {
+  const url = document.getElementById('yt-url').value.trim();
+  if (!url) { alert('請貼入 YouTube URL'); return; }
+
+  document.getElementById('btn-convert').disabled = true;
+  document.getElementById('progress-done').style.display = 'none';
+  document.getElementById('progress-error').style.display = 'none';
+  document.getElementById('progress-area').classList.add('visible');
+  setProgress(1, '準備中…');
+
+  fetch('/convert', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({url}),
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.error) {
+      showError(data.error);
+      return;
+    }
+    pollStatus(data.task_id);
+  })
+  .catch(e => showError('網路錯誤：' + e));
+}
+
+function pollStatus(taskId) {
+  fetch('/status/' + taskId)
+    .then(r => r.json())
+    .then(data => {
+      setProgress(data.step_index, data.current_step);
+
+      if (data.status === 'done') {
+        setProgress(TOTAL_STEPS, '完成');
+        document.getElementById('progress-done').style.display = 'block';
+        // Reload cards after 1.5s
+        setTimeout(reloadCards, 1500);
+        return;
+      }
+      if (data.status === 'error') {
+        showError(data.error || '未知錯誤');
+        return;
+      }
+      // Still running — poll again in 2s
+      _pollTimer = setTimeout(() => pollStatus(taskId), 2000);
+    })
+    .catch(e => showError('polling 錯誤：' + e));
+}
+
+function setProgress(stepIdx, stepName) {
+  const pct = Math.min(100, Math.round((stepIdx / TOTAL_STEPS) * 100));
+  document.getElementById('progress-fill').style.width = pct + '%';
+  document.getElementById('step-name').textContent = stepName;
+  document.getElementById('step-counter').textContent = stepIdx + ' / ' + TOTAL_STEPS;
+  document.getElementById('progress-sub').textContent = stepName;
+}
+
+function showError(msg) {
+  const el = document.getElementById('progress-error');
+  el.textContent = '錯誤：' + msg;
+  el.style.display = 'block';
+  document.getElementById('btn-convert').disabled = false;
+}
+
+function reloadCards() {
+  fetch('/api/summaries')
+    .then(r => r.json())
+    .then(summaries => {
+      renderCards(summaries);
+      document.getElementById('btn-convert').disabled = false;
+      document.getElementById('yt-url').value = '';
+      // 更新完成訊息為更明確的提示，並在 4 秒後自動隱藏整個進度區
+      const doneEl = document.getElementById('progress-done');
+      doneEl.textContent = '✓ 已完成 — 共 ' + summaries.length + ' 篇，可貼新 URL 繼續';
+      setTimeout(() => {
+        document.getElementById('progress-area').classList.remove('visible');
+      }, 4000);
+    })
+    .catch(e => {
+      console.error('reload failed', e);
+      document.getElementById('btn-convert').disabled = false;
+    });
+}
+
+// Re-render card container from JSON (post-chain reload)
+const CATEGORY_ORDER = ["投資/經濟","AI/科技","演講/溝通","思想/個人成長","健康/科學"];
+
+function renderCards(summaries) {
+  // Group
+  const grouped = {};
+  summaries.forEach(s => {
+    const cat = s.category || '未分類';
+    (grouped[cat] = grouped[cat] || []).push(s);
+  });
+
+  const known = CATEGORY_ORDER.filter(c => grouped[c]);
+  const extra = Object.keys(grouped)
+    .filter(c => !CATEGORY_ORDER.includes(c) && c !== '未分類').sort();
+  const unc = grouped['未分類'] ? ['未分類'] : [];
+  const order = [...known, ...extra, ...unc];
+
+  const container = document.getElementById('card-container');
+  container.innerHTML = '';
+
+  // Collect all tags for chip rebuild
+  const allTagsSet = new Set();
+
+  order.forEach(cat => {
+    const items = grouped[cat].sort((a,b) =>
+      (b.generated_at || '').localeCompare(a.generated_at || ''));
+
+    const section = document.createElement('div');
+    section.className = 'section';
+    section.dataset.category = cat;
+
+    const titleDiv = document.createElement('div');
+    titleDiv.className = 'section-title';
+    titleDiv.textContent = cat + '（' + items.length + '）';
+    section.appendChild(titleDiv);
+
+    const grid = document.createElement('div');
+    grid.className = 'card-grid';
+
+    items.forEach(item => {
+      const tags = item.tags || [];
+      tags.forEach(t => allTagsSet.add(t));
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.dataset.title = item.filename || '';
+      card.dataset.speaker = item.speaker || '';
+      card.dataset.tags = tags.join(',');
+
+      const mindmapBtnHtml = item.markmap_url
+        ? `<a href="${esc(item.markmap_url)}" target="_blank" class="mindmap-btn"
+              title="開心智圖" onclick="event.stopPropagation()">
+             <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="1.8"
+                  stroke-linecap="round" stroke-linejoin="round">
+               <circle cx="12" cy="12" r="2"/>
+               <circle cx="4" cy="5" r="1.5"/>
+               <circle cx="4" cy="19" r="1.5"/>
+               <circle cx="20" cy="5" r="1.5"/>
+               <circle cx="20" cy="19" r="1.5"/>
+               <path d="M5.5 6 L10 11"/>
+               <path d="M5.5 18 L10 13"/>
+               <path d="M18.5 6 L14 11"/>
+               <path d="M18.5 18 L14 13"/>
+             </svg>
+           </a>`
+        : '';
+
+      const pitchHtml = item.elevator_pitch
+        ? `<div class="card-pitch">${esc(item.elevator_pitch)}</div>` : '';
+
+      const tagsHtml = tags.length
+        ? `<div class="card-tags">${tags.map(t => `<span class="card-tag">${esc(t)}</span>`).join('')}</div>`
+        : '';
+
+      card.innerHTML = `
+        <div class="card-header" onclick="toggleCard(this)">
+          <span class="card-title-text">${esc(item.filename)}</span>
+          <div class="card-actions">
+            ${mindmapBtnHtml}
+            <span class="card-arrow">▸</span>
+          </div>
+        </div>
+        <div class="card-body">
+          ${pitchHtml}
+          <div class="card-meta">${esc(item.speaker)} · ${esc(item.duration)}</div>
+          ${tagsHtml}
+        </div>
+      `;
+      grid.appendChild(card);
+    });
+
+    section.appendChild(grid);
+    container.appendChild(section);
+  });
+
+  // Rebuild tag chips
+  rebuildTagChips([...allTagsSet].sort());
+
+  // Re-apply any active filter
+  applyFilter();
+
+  // Update header count
+  document.querySelector('header p.meta').textContent =
+    '共 ' + summaries.length + ' 篇 · 第一性原理摘要 + 互動心智圖';
+}
+
+function esc(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function rebuildTagChips(tags) {
+  const wrap = document.getElementById('tag-chips');
+  // Keep the clear button
+  const clearBtn = wrap.querySelector('.btn-clear');
+  wrap.innerHTML = '';
+  tags.forEach(tag => {
+    const chip = document.createElement('span');
+    chip.className = 'tag-chip' + (activeTags.has(tag) ? ' active' : '');
+    chip.dataset.tag = tag;
+    chip.textContent = tag;
+    chip.onclick = function() { toggleTag(this); };
+    wrap.appendChild(chip);
+  });
+  wrap.appendChild(clearBtn);
+}
+</script>
+</body>
+</html>
