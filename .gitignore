@@ -3,3 +3,5 @@ outputs/
 __pycache__/
 *.mp3
 *.part
+venv/
+test_mindmap_preview.md

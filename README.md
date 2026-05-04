@@ -1,6 +1,7 @@
 # YT 演講摘要
 
-> ⚠️ **目前僅在 Windows 11 測試過。** Python 程式（`yt_summary.py` / `web_server.py` / `gen_*.py`）跨平台應該能跑；但 `.bat` 啟動腳本是 Windows 限定，Mac / Linux 使用者需要對應寫 `.sh` 替代（PR welcome）。
+> ⚠️ **跨平台支援**：Windows 用 `.bat`、Mac/Linux 用 `.sh`，邏輯一致。
+> 主要在 Windows 11 開發測試；Mac/Linux 腳本歡迎回饋（PR welcome）。
 
 ## Features
 
@@ -23,13 +24,35 @@
 
 ## 一、安裝
 
-### Python 環境
+### Quick Setup（跨平台一鍵）
 
-本專案應在 **conda base 環境**（`python`）執行（與既有 YT 轉文字 ipynb 同環境，已備齊 yt-dlp / whisper / torch+CUDA / dotenv，僅需補裝 `openai`；Flask 已在 requirements.txt）。
+**Windows**：雙擊 `setup.bat`
 
+**Mac / Linux**：
 ```bash
-python -m pip install -r requirements.txt
+chmod +x setup.sh
+./setup.sh
 ```
+
+setup script 會：偵測你的 Python → 建 `./venv` 隔離環境 → 裝所有依賴。
+
+完成後**永遠用 venv 內的 python**（launcher 已寫死路徑），不依賴系統 PATH。
+
+### GPU 加速（可選，預設 CPU torch）
+
+預設安裝 CPU 版 torch（Whisper 轉文字會慢一點）。NVIDIA CUDA 加速：
+
+**Windows**:
+```
+venv\Scripts\python.exe -m pip install --upgrade torch --index-url https://download.pytorch.org/whl/cu121
+```
+
+**Mac / Linux**:
+```bash
+./venv/bin/python -m pip install --upgrade torch --index-url https://download.pytorch.org/whl/cu121
+```
+
+（CUDA 版本依你的 NVIDIA driver；上述 cu121 是 CUDA 12.1，可換成 cu118 等）
 
 ### ffmpeg
 
@@ -65,9 +88,12 @@ code --install-extension tomoyukim.vscode-mermaid-editor
 
 ## 二、日常使用
 
-### 主要入口 — 開啟UI.bat（Web Dashboard）
+### Web Dashboard（推薦）
 
-雙擊 `開啟UI.bat` → 自動啟動 Flask server + 開瀏覽器 `localhost:5000`：
+- Windows：雙擊 `開啟UI.bat`
+- Mac/Linux：`./run-ui.sh`
+
+啟 Flask server → 自動開瀏覽器 `localhost:5000` → URL 輸入框轉新影片 + 卡片網格瀏覽既有摘要。
 
 - **上方輸入框**：貼 YouTube URL → 點「轉換」→ 進度條即時顯示 9 步 → 完成自動重新載入卡片
 - **下方卡片網格**：所有摘要按 category 分群，含 elevator pitch、speaker、tag chips
@@ -75,19 +101,12 @@ code --install-extension tomoyukim.vscode-mermaid-editor
 
 視窗保持開啟即 server 運作，關掉視窗即停止。
 
-### Fallback — 一鍵啟動.bat（純命令列）
+### 命令列 Chain（fallback）
 
-雙擊 → 貼 URL → 全套自動跑（yt_summary → gen_mindmap → gen_index → gen_overview → gen_markmap）。
+- Windows：雙擊 `一鍵啟動.bat`
+- Mac/Linux：`./run-cli.sh`
 
-### 純命令列
-
-```bash
-python yt_summary.py "https://youtube.com/watch?v=XXX"
-python gen_mindmap.py    # 為新 .md 產對應 .mmd
-python gen_index.py      # 重建 INDEX.md
-```
-
-無參數時 `yt_summary.py` 會互動式問 URL。
+整套 chain 跑（yt_summary → gen_mindmap → gen_index → gen_overview → gen_markmap）。
 
 ---
 
@@ -151,6 +170,9 @@ code "outputs/summaries/心智圖總覽.md"
 | `一鍵啟動.bat` | 把上面五個串起來（純命令列 fallback） | 不需 web UI 時用 |
 | `prompts.py` | 集中 LLM prompt（摘要 + 心智圖兩組） | 想調 prompt 時改 |
 | `summarizer.py` / `transcriber.py` / `config.py` | 主流程內部模組 | 不直接呼叫 |
+| `setup.bat` / `setup.sh` | 一次性建 venv + 裝依賴 | 第一次 clone 後跑 |
+| `run-ui.sh` | Mac/Linux 啟動 web dashboard | 對應 `開啟UI.bat` |
+| `run-cli.sh` | Mac/Linux chain 啟動 | 對應 `一鍵啟動.bat` |
 
 ### `gen_mindmap.py` 旗標
 

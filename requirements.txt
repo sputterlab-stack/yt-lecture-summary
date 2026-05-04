@@ -1,3 +1,4 @@
+# CPU torch by default; for GPU CUDA see README
 yt-dlp
 openai-whisper
 torch

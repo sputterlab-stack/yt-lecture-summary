@@ -1,0 +1,8 @@
+# Force line endings per file type so cmd.exe / bash both work after clone
+*.bat text eol=crlf
+*.sh  text eol=lf
+*.py  text eol=lf
+*.md  text
+*.html text
+*.mmd text
+*.txt text
