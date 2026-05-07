@@ -1,15 +1,46 @@
 # 集中管理 LLM prompt 常數
+from pathlib import Path
+
+import yaml
+
+_TAXONOMY_PATH = Path(__file__).parent / "category_taxonomy.yaml"
+
+
+def _load_taxonomy() -> dict:
+    if not _TAXONOMY_PATH.exists():
+        return {"taxonomy": {}, "aliases": {}, "skip_files": []}
+    return yaml.safe_load(_TAXONOMY_PATH.read_text(encoding="utf-8")) or {}
+
+
+def _build_taxonomy_text(taxonomy: dict) -> str:
+    """二層樹序列化成 prompt 可讀文字。"""
+    lines = []
+    for main, subs in taxonomy.items():
+        if subs:
+            sub_str = " / ".join(subs)
+            lines.append(f"- **{main}**：{sub_str}")
+        else:
+            lines.append(f"- **{main}**（子類自由命名）")
+    return "\n".join(lines)
+
+
+_TAXONOMY = _load_taxonomy()
+TAXONOMY_TEXT = _build_taxonomy_text(_TAXONOMY.get("taxonomy", {}))
+
+
 SYSTEM_PROMPT = """你是學術級演講內容拆解專家。你的任務是用第一性原理（First Principles）拆解演講逐字稿，產出「上下兩層」結構：上層精選摘要（沒時間就看這段），下層 8 段完整拆解（深入學習用）。"""
 
-USER_PROMPT_TEMPLATE = """【分類提示】
-請為此演講選一個 category，優先使用以下已知主題群：
-- 投資/經濟（美股、利率、市場分析、宏觀經濟等）
-- AI/科技（LLM、Agent、技術趨勢、軟體工程等）
-- 演講/溝通（演講技巧、人際溝通、表達等）
-- 思想/個人成長（人生哲學、職涯、未來見解、教育等）
-- 健康/科學（醫學、心理科學、生活科學等）
+# 注意：USER_PROMPT_TEMPLATE 用 .format(yt_title=..., source_url=..., ...) 被呼叫，
+# {TAXONOMY_TEXT} 必須在這層用 string replace 預先填入（不走 .format()，避免被當成 placeholder）
+_RAW_USER_PROMPT = """【分類提示】
+從以下二層 taxonomy 選一組「主類 + 子類」：
 
-如演講內容不適合任何現有群，可建立新群名（簡短中文 4-8 字，例：「藝術/設計」「歷史/政治」）。
+{TAXONOMY_TEXT}
+
+規則：
+- **主類必須**從上面選一個現有的，**不可新建**
+- 子類優先選列出的現有子類；確實都不適合可新建簡短中文（4-8 字）
+- 若主類後標「子類自由命名」，則子類自訂
 
 tags 是 3-6 個自由標籤，描述細分主題、關鍵概念、講者特色，方便未來搜尋。
 
@@ -36,8 +67,11 @@ tags 是 3-6 個自由標籤，描述細分主題、關鍵概念、講者特色�
   "filename": "10-20字精準繁體中文標題（不含副檔名與標點 \\\\ / : * ? \\" < > |）",
   "speaker": "若可從內容識別則填講者姓名，否則填 '未知'",
   "language": "原語言（中文/英文/日文等）",
-  "category": "選一個現有主題群；不適合則建新群名（簡短中文 4-8 字）",
+  "category": "從 taxonomy 選的主類（必須是上面列出的）",
+  "subcategory": "從 taxonomy 該主類下的子類（或合理新命名 4-8 字）",
   "tags": ["細分標籤", "跨主題標籤"],
+  "thesis": "演講者最核心的主張（30 字內，立場句不是描述句；要能單獨拿出來引用，例如『美聯儲必須立刻降息以避免長債失控』）",
+  "weekly_action": "這週能立刻嘗試的一個具體小動作（不超過 50 字，要能在 5 分鐘內開始做；不是抽象建議，是可執行的單一動作，例如『今天記錄一次自己刷手機的衝動以及當時的情緒』）",
   "summary_md": "完整 Markdown 字串，依下列結構生成"
 }}
 
@@ -72,6 +106,35 @@ summary_md 從以下內容開始，依序生成：
 ### 八、金句精華（原文 + 中譯，3-5 句）
 
 8 段每段一個 H3 標題，標題文字完全一致，順序不可調換。"""
+
+# 把 TAXONOMY_TEXT 預先填入；其餘 {yt_title} {transcript} 等仍由 summarizer.py 的 .format() 處理
+USER_PROMPT_TEMPLATE = _RAW_USER_PROMPT.replace("{TAXONOMY_TEXT}", TAXONOMY_TEXT)
+
+
+# === Active Recall 挑戰 prompt（web_server /challenge endpoint 用）===
+
+RECALL_CHALLENGE_SYSTEM = """你是嚴格但有同理心的學習教練。使用者剛看完一篇演講摘要，現在以「合上摘要、用自己的話講」的方式接受 active recall 挑戰。你的工作是把使用者的回答跟原摘要對齊，找出他抓到什麼、漏什麼。只輸出 JSON，不輸出任何其他文字。"""
+
+RECALL_CHALLENGE_USER_TEMPLATE = """對照原摘要評估這位使用者的「合上書」回答。
+
+【任務】
+1. **got_right**：使用者抓對的核心點（list[str]，每項 1 句、20 字內）。只列「真的抓到」的點，不要太寬鬆。
+2. **missed**：使用者**漏掉但很重要**的核心點（list[str]，每項 1-2 句、40 字內）。只列「會影響理解」的關鍵漏失，雞毛蒜皮不用列。每項用「忽略了 X」開頭。
+3. **coaching**：一句話引導下次該注意的方向（30 字內，鼓勵性而非批評，例如「下次注意分辨主張與證據的差異」）。
+
+【特殊情況】
+- 使用者根本沒寫東西或寫亂碼 → got_right=[], missed 列 3 個最關鍵點, coaching="建議先閱讀後再嘗試挑戰"
+- 使用者寫得很完整 → missed 可能 1 個甚至 0 個（不要硬挑毛病）
+- 使用者偏離主題 → got_right=[], missed 列原摘要核心點, coaching 提醒回到主題
+
+【演講原摘要（精選段）】
+{summary_top}
+
+【使用者的回答】
+{user_answer}
+
+【輸出格式】嚴格 JSON：
+{{"got_right": ["...", "..."], "missed": ["...", "..."], "coaching": "..."}}"""
 
 
 # === Mermaid 心智圖 prompt（gen_mindmap.py 用）===

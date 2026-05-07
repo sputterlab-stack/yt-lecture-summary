@@ -43,7 +43,7 @@
       gap: 8px;
       flex-wrap: wrap;
     }
-    .convert-row input[type="text"] {
+    .convert-row textarea {
       flex: 1;
       min-width: 220px;
       padding: 9px 12px;
@@ -51,8 +51,18 @@
       border-radius: 6px;
       font-size: 0.9em;
       outline: none;
+      resize: vertical;
+      min-height: 38px;
+      max-height: 240px;
+      font-family: inherit;
+      line-height: 1.5;
     }
-    .convert-row input[type="text"]:focus { border-color: #1a6bc4; }
+    .convert-row textarea:focus { border-color: #1a6bc4; }
+    .convert-hint {
+      margin-top: 8px;
+      font-size: 0.8em;
+      color: #6b7280;
+    }
     .btn-convert {
       padding: 9px 20px;
       background: #1a6bc4;
@@ -69,43 +79,77 @@
     }
     .btn-convert:hover:not(:disabled) { background: #1558a8; }
 
-    /* ── Progress ── */
-    .progress-area { margin-top: 14px; display: none; }
-    .progress-area.visible { display: block; }
-    .progress-label {
+    /* ── Tasks area (多工進度) ── */
+    .tasks-area { margin-top: 14px; display: none; }
+    .tasks-area.visible { display: block; }
+    .tasks-header {
       display: flex;
       justify-content: space-between;
-      font-size: 0.82em;
+      align-items: center;
+      font-size: 0.85em;
       color: #6b7280;
-      margin-bottom: 5px;
+      margin-bottom: 8px;
     }
-    .progress-bar-bg {
-      height: 8px;
-      background: #e5e7eb;
-      border-radius: 4px;
-      overflow: hidden;
-    }
-    .progress-bar-fill {
-      height: 100%;
-      background: #1a6bc4;
-      border-radius: 4px;
-      transition: width 0.4s ease;
-    }
-    .progress-step-name {
-      font-size: 0.85em;
-      color: #374151;
-      margin-top: 6px;
-    }
-    .progress-done {
-      margin-top: 8px;
-      font-size: 0.85em;
-      color: #059669;
+    .batch-status {
+      font-size: 0.82em;
+      color: #1a6bc4;
       font-weight: 600;
     }
-    .progress-error {
-      margin-top: 8px;
+    .task-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 10px;
+    }
+    .task-card {
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      padding: 10px 12px;
       font-size: 0.85em;
+    }
+    .task-card.done { background: #f0fdf4; border-color: #bbf7d0; }
+    .task-card.error { background: #fef2f2; border-color: #fecaca; }
+    .task-card.waiting_batch { background: #fefce8; border-color: #fde68a; }
+    .task-title {
+      font-weight: 600;
+      color: #111827;
+      margin-bottom: 4px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .task-url {
+      font-size: 0.75em;
+      color: #9ca3af;
+      margin-bottom: 6px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .task-step {
+      font-size: 0.78em;
+      color: #4b5563;
+      margin-bottom: 4px;
+    }
+    .task-bar-bg {
+      height: 5px;
+      background: #e5e7eb;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .task-bar-fill {
+      height: 100%;
+      background: #1a6bc4;
+      border-radius: 3px;
+      transition: width 0.4s ease;
+    }
+    .task-card.done .task-bar-fill { background: #059669; }
+    .task-card.error .task-bar-fill { background: #dc2626; }
+    .task-card.waiting_batch .task-bar-fill { background: #ca8a04; }
+    .task-error-msg {
+      font-size: 0.78em;
       color: #dc2626;
+      margin-top: 4px;
     }
 
     /* ── Filter bar ── */
@@ -245,6 +289,31 @@
       color: #4b5563;
       line-height: 1.55;
     }
+
+    /* Thesis（核心主張）— 卡片正面顯眼 */
+    .card-thesis {
+      padding: 0 16px 6px;
+      font-size: 0.95em;
+      font-weight: 500;
+      color: #1f2937;
+      line-height: 1.5;
+      border-top: 1px solid #f3f4f6;
+      padding-top: 10px;
+    }
+    /* Weekly action — 黃色 callout box，emoji 開頭 */
+    .card-action {
+      margin: 0 16px 12px;
+      padding: 7px 10px;
+      background: #fef3c7;
+      border-left: 3px solid #f59e0b;
+      border-radius: 3px;
+      font-size: 0.82em;
+      color: #78350f;
+      line-height: 1.5;
+    }
+    .card-action::before {
+      content: "💡 ";
+    }
     .card-meta {
       font-size: 0.85em;
       color: #9ca3af;
@@ -261,6 +330,151 @@
       border-radius: 12px;
       font-size: 0.82em;
       color: #6b7280;
+    }
+
+    /* ── Challenge button + modal ── */
+    .challenge-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 6px;
+      border-radius: 6px;
+      background: none;
+      border: none;
+      color: #ca8a04;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .challenge-btn:hover { background: #fef3c7; }
+
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 1000;
+      padding: 60px 20px 40px;
+      overflow-y: auto;
+    }
+    .modal-overlay.visible { display: block; }
+    .modal-panel {
+      background: #fff;
+      border-radius: 12px;
+      width: 100%;
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 24px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 12px;
+      gap: 12px;
+    }
+    .modal-title {
+      font-size: 1.05em;
+      font-weight: 700;
+      color: #111827;
+      flex: 1;
+      line-height: 1.4;
+    }
+    .modal-close {
+      background: none;
+      border: none;
+      font-size: 1.6em;
+      color: #9ca3af;
+      cursor: pointer;
+      padding: 0 6px;
+      line-height: 1;
+    }
+    .modal-close:hover { color: #6b7280; }
+    .modal-prompt {
+      font-size: 0.9em;
+      color: #4b5563;
+      margin-bottom: 12px;
+      padding: 10px 12px;
+      background: #fef3c7;
+      border-left: 3px solid #f59e0b;
+      border-radius: 4px;
+      line-height: 1.6;
+    }
+    .modal-textarea {
+      width: 100%;
+      min-height: 110px;
+      padding: 10px 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 0.95em;
+      outline: none;
+      resize: vertical;
+      line-height: 1.55;
+    }
+    .modal-textarea:focus { border-color: #1a6bc4; }
+    .modal-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+      justify-content: flex-end;
+    }
+    .modal-btn-primary, .modal-btn-secondary {
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 0.9em;
+      cursor: pointer;
+      border: 1px solid;
+    }
+    .modal-btn-primary {
+      background: #1a6bc4;
+      color: #fff;
+      border-color: #1a6bc4;
+    }
+    .modal-btn-primary:disabled {
+      background: #93c5fd;
+      border-color: #93c5fd;
+      cursor: not-allowed;
+    }
+    .modal-btn-primary:hover:not(:disabled) { background: #1558a8; }
+    .modal-btn-secondary {
+      background: #fff;
+      color: #6b7280;
+      border-color: #d1d5db;
+    }
+    .modal-btn-secondary:hover { background: #f3f4f6; }
+    .modal-feedback {
+      margin-top: 16px;
+      padding: 14px 16px;
+      background: #f9fafb;
+      border-radius: 8px;
+      display: none;
+    }
+    .modal-feedback.visible { display: block; }
+    .feedback-section {
+      margin-bottom: 14px;
+    }
+    .feedback-section:last-child { margin-bottom: 0; }
+    .feedback-label {
+      font-size: 0.85em;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    .feedback-label.got { color: #059669; }
+    .feedback-label.missed { color: #dc2626; }
+    .feedback-label.coach { color: #1a6bc4; }
+    .feedback-list {
+      margin: 0;
+      padding-left: 24px;
+      font-size: 0.9em;
+      color: #1f2937;
+      line-height: 1.6;
+    }
+    .feedback-coach {
+      font-size: 0.92em;
+      color: #1f2937;
+      font-style: italic;
+      padding-left: 4px;
     }
 
     /* ── Empty state ── */
@@ -283,25 +497,21 @@
 
 <!-- Convert box -->
 <div class="convert-box">
-  <h2>轉換新影片</h2>
+  <h2>轉換新影片（一行一個 URL，可批次）</h2>
   <div class="convert-row">
-    <input type="text" id="yt-url" placeholder="貼入 YouTube URL…" />
+    <textarea id="yt-url" rows="1" placeholder="貼 YouTube URL…&#10;一行一個可批次轉換"></textarea>
     <button class="btn-convert" id="btn-convert" onclick="startConvert()">轉換</button>
   </div>
+  <div class="convert-hint">
+    並行上限 {{ parallel_limit }} · Whisper 階段排隊跑（防 GPU OOM）· DeepSeek 並行
+  </div>
 
-  <div class="progress-area" id="progress-area">
-    <div class="progress-label">
-      <span id="step-name">準備中…</span>
-      <span id="step-counter">0 / 9</span>
+  <div class="tasks-area" id="tasks-area">
+    <div class="tasks-header">
+      <span id="tasks-summary">0 個任務</span>
+      <span class="batch-status" id="batch-status"></span>
     </div>
-    <div class="progress-bar-bg">
-      <div class="progress-bar-fill" id="progress-fill" style="width:0%"></div>
-    </div>
-    <div class="progress-step-name" id="progress-sub"></div>
-    <div class="progress-done" id="progress-done" style="display:none">
-      ✓ 完成！正在重新載入卡片…
-    </div>
-    <div class="progress-error" id="progress-error" style="display:none"></div>
+    <div class="task-grid" id="task-grid"></div>
   </div>
 </div>
 
@@ -332,6 +542,17 @@
       <div class="card-header" onclick="toggleCard(this)">
         <span class="card-title-text">{{ item.filename }}</span>
         <div class="card-actions">
+          <button class="challenge-btn" data-filename="{{ item.filename }}"
+                  title="考自己（合上摘要 active recall）"
+                  onclick="event.stopPropagation(); openChallenge(this.dataset.filename)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="1.8"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="9"/>
+              <path d="M9.5 9a2.5 2.5 0 1 1 4 2c-.8.8-1.5 1.3-1.5 2.5"/>
+              <line x1="12" y1="17" x2="12" y2="17.01"/>
+            </svg>
+          </button>
           {% if item.markmap_url %}
           <a href="{{ item.markmap_url }}" target="_blank" class="mindmap-btn"
              title="開心智圖" onclick="event.stopPropagation()">
@@ -353,6 +574,12 @@
           <span class="card-arrow">▸</span>
         </div>
       </div>
+      {% if item.thesis %}
+      <div class="card-thesis">{{ item.thesis }}</div>
+      {% endif %}
+      {% if item.weekly_action %}
+      <div class="card-action">{{ item.weekly_action }}</div>
+      {% endif %}
       <div class="card-body">
         {% if item.elevator_pitch %}
         <div class="card-pitch">{{ item.elevator_pitch }}</div>
@@ -374,6 +601,29 @@
 </div>
 
 <div class="no-results" id="no-results">沒有符合的摘要</div>
+
+<!-- Challenge Modal (active recall) -->
+<div class="modal-overlay" id="challenge-modal"
+     onclick="if(event.target===this) closeChallenge()">
+  <div class="modal-panel">
+    <div class="modal-header">
+      <div class="modal-title" id="challenge-title">考自己</div>
+      <button class="modal-close" onclick="closeChallenge()" title="關閉">×</button>
+    </div>
+    <div class="modal-prompt">
+      請用 30 秒寫出這篇的核心論點，盡量用<strong>自己的話</strong> —— 不要回去看摘要。卡住的地方就是你以為懂但其實還沒懂的地方。
+    </div>
+    <textarea class="modal-textarea" id="challenge-input"
+              placeholder="這篇講者的核心主張是..."
+              oninput="onChallengeInput()"></textarea>
+    <div class="modal-actions">
+      <button class="modal-btn-secondary" onclick="closeChallenge()">關閉</button>
+      <button class="modal-btn-primary" id="challenge-submit-btn"
+              onclick="submitChallenge()" disabled>提交</button>
+    </div>
+    <div class="modal-feedback" id="challenge-feedback"></div>
+  </div>
+</div>
 
 <script>
 // ── Filter logic ────────────────────────────────────────────────────────────
@@ -438,72 +688,122 @@ function applyFilter() {
   document.getElementById('no-results').classList.toggle('visible', visibleCount === 0);
 }
 
-// ── Convert / progress ──────────────────────────────────────────────────────
+// ── Multi-task convert / polling ───────────────────────────────────────────
 let _pollTimer = null;
-const TOTAL_STEPS = 9;
+let _activeTaskIds = new Set();
+let _reloadDone = false;  // 避免重複觸發 reloadCards
 
 function startConvert() {
-  const url = document.getElementById('yt-url').value.trim();
-  if (!url) { alert('請貼入 YouTube URL'); return; }
+  const ta = document.getElementById('yt-url');
+  const urls = ta.value.split(/\n+/).map(u => u.trim()).filter(u => u.length > 0);
+  if (urls.length === 0) { alert('請貼入至少一個 YouTube URL（一行一個）'); return; }
 
   document.getElementById('btn-convert').disabled = true;
-  document.getElementById('progress-done').style.display = 'none';
-  document.getElementById('progress-error').style.display = 'none';
-  document.getElementById('progress-area').classList.add('visible');
-  setProgress(1, '準備中…');
+  document.getElementById('tasks-area').classList.add('visible');
+  _reloadDone = false;
 
   fetch('/convert', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({url}),
+    body: JSON.stringify({urls}),
   })
-  .then(r => r.json())
-  .then(data => {
-    if (data.error) {
-      showError(data.error);
+  .then(r => r.json().then(data => ({status: r.status, data})))
+  .then(({status, data}) => {
+    document.getElementById('btn-convert').disabled = false;  // 提交完立刻可再按
+    if (status >= 400) {
+      alert('錯誤：' + (data.error || 'unknown'));
       return;
     }
-    pollStatus(data.task_id);
+    (data.task_ids || []).forEach(id => _activeTaskIds.add(id));
+    ta.value = '';   // 清空 textarea，可以接著貼新批次
+    if (_pollTimer) clearTimeout(_pollTimer);
+    pollTasks();
   })
-  .catch(e => showError('網路錯誤：' + e));
+  .catch(e => {
+    alert('網路錯誤：' + e);
+    document.getElementById('btn-convert').disabled = false;
+  });
 }
 
-function pollStatus(taskId) {
-  fetch('/status/' + taskId)
+function pollTasks() {
+  fetch('/tasks')
     .then(r => r.json())
     .then(data => {
-      setProgress(data.step_index, data.current_step);
+      const tasks = data.tasks || [];
+      const batch = data.batch || {};
+      renderTasks(tasks, batch);
 
-      if (data.status === 'done') {
-        setProgress(TOTAL_STEPS, '完成');
-        document.getElementById('progress-done').style.display = 'block';
-        // Reload cards after 1.5s
-        setTimeout(reloadCards, 1500);
-        return;
+      const tracked = tasks.filter(t => _activeTaskIds.has(t.task_id));
+      const stillRunning = tracked.filter(t =>
+        t.status !== 'done' && t.status !== 'error'
+      );
+
+      if (_activeTaskIds.size > 0 && stillRunning.length === 0 && !batch.running && !_reloadDone) {
+        _reloadDone = true;
+        setTimeout(reloadCards, 800);
+      } else {
+        _pollTimer = setTimeout(pollTasks, 2000);
       }
-      if (data.status === 'error') {
-        showError(data.error || '未知錯誤');
-        return;
-      }
-      // Still running — poll again in 2s
-      _pollTimer = setTimeout(() => pollStatus(taskId), 2000);
     })
-    .catch(e => showError('polling 錯誤：' + e));
+    .catch(e => {
+      console.error('poll failed', e);
+      _pollTimer = setTimeout(pollTasks, 5000);
+    });
 }
 
-function setProgress(stepIdx, stepName) {
-  const pct = Math.min(100, Math.round((stepIdx / TOTAL_STEPS) * 100));
-  document.getElementById('progress-fill').style.width = pct + '%';
-  document.getElementById('step-name').textContent = stepName;
-  document.getElementById('step-counter').textContent = stepIdx + ' / ' + TOTAL_STEPS;
-  document.getElementById('progress-sub').textContent = stepName;
+function renderTasks(allTasks, batch) {
+  // 顯示順序：本 session 起的 task 優先；若使用者重新整理頁面 _activeTaskIds 是空的，
+  // 此時把 server 還在跑的 task 加入追蹤
+  if (_activeTaskIds.size === 0) {
+    allTasks.filter(t => t.status !== 'done' && t.status !== 'error')
+      .forEach(t => _activeTaskIds.add(t.task_id));
+  }
+  const display = allTasks.filter(t => _activeTaskIds.has(t.task_id));
+
+  const counts = {
+    queued: 0, running: 0, waiting_batch: 0, done: 0, error: 0,
+  };
+  display.forEach(t => { counts[t.status] = (counts[t.status] || 0) + 1; });
+
+  document.getElementById('tasks-summary').textContent =
+    `${display.length} 個任務 · ` +
+    `running ${counts.queued + counts.running + counts.waiting_batch} · ` +
+    `done ${counts.done} · error ${counts.error}`;
+  document.getElementById('batch-status').textContent =
+    batch.running ? '批次後處理中…' : '';
+
+  const grid = document.getElementById('task-grid');
+  grid.innerHTML = '';
+  display.forEach(t => grid.appendChild(makeTaskCard(t)));
 }
 
-function showError(msg) {
-  const el = document.getElementById('progress-error');
-  el.textContent = '錯誤：' + msg;
-  el.style.display = 'block';
-  document.getElementById('btn-convert').disabled = false;
+function makeTaskCard(t) {
+  const card = document.createElement('div');
+  card.className = 'task-card ' + (t.status || '');
+
+  const title = t.filename || t.yt_title || '處理中…';
+  const total = t.total_steps || 5;
+  const idx = t.step_index || 0;
+  const pct = Math.min(100, Math.round((idx / total) * 100));
+  let stepText;
+  switch (t.status) {
+    case 'queued': stepText = '排隊中…'; break;
+    case 'waiting_batch': stepText = '等批次後處理…'; break;
+    case 'done': stepText = '✓ 完成'; break;
+    case 'error': stepText = '✗ 失敗'; break;
+    default: stepText = `[${idx}/${total}] ${t.current_step || ''}`;
+  }
+
+  card.innerHTML = `
+    <div class="task-title">${esc(title)}</div>
+    <div class="task-url">${esc(t.url || '')}</div>
+    <div class="task-step">${esc(stepText)}</div>
+    <div class="task-bar-bg">
+      <div class="task-bar-fill" style="width:${t.status === 'done' ? 100 : pct}%"></div>
+    </div>
+    ${t.error ? `<div class="task-error-msg">${esc(t.error)}</div>` : ''}
+  `;
+  return card;
 }
 
 function reloadCards() {
@@ -511,23 +811,129 @@ function reloadCards() {
     .then(r => r.json())
     .then(summaries => {
       renderCards(summaries);
-      document.getElementById('btn-convert').disabled = false;
-      document.getElementById('yt-url').value = '';
-      // 更新完成訊息為更明確的提示，並在 4 秒後自動隱藏整個進度區
-      const doneEl = document.getElementById('progress-done');
-      doneEl.textContent = '✓ 已完成 — 共 ' + summaries.length + ' 篇，可貼新 URL 繼續';
-      setTimeout(() => {
-        document.getElementById('progress-area').classList.remove('visible');
-      }, 4000);
+      // 註：btn-convert 在提交時已 enable，這裡不再動
     })
     .catch(e => {
       console.error('reload failed', e);
-      document.getElementById('btn-convert').disabled = false;
     });
 }
 
+// 啟動時若 server 已有未完成 task（refresh 時），自動接手 polling
+window.addEventListener('load', () => {
+  fetch('/tasks').then(r => r.json()).then(data => {
+    const inflight = (data.tasks || []).filter(t =>
+      t.status !== 'done' && t.status !== 'error'
+    );
+    if (inflight.length > 0 || data.batch?.running) {
+      document.getElementById('tasks-area').classList.add('visible');
+      pollTasks();
+    }
+  }).catch(() => {});
+});
+
+// ── Active Recall Challenge ────────────────────────────────────────────────
+let _currentChallengeFile = null;
+
+function openChallenge(filename) {
+  _currentChallengeFile = filename;
+  document.getElementById('challenge-title').textContent = '考自己 — ' + filename;
+  document.getElementById('challenge-input').value = '';
+  document.getElementById('challenge-feedback').classList.remove('visible');
+  document.getElementById('challenge-feedback').innerHTML = '';
+  document.getElementById('challenge-submit-btn').disabled = true;
+  document.getElementById('challenge-submit-btn').textContent = '提交';
+  document.getElementById('challenge-modal').classList.add('visible');
+  setTimeout(() => document.getElementById('challenge-input').focus(), 50);
+}
+
+function closeChallenge() {
+  document.getElementById('challenge-modal').classList.remove('visible');
+  _currentChallengeFile = null;
+}
+
+function onChallengeInput() {
+  const v = document.getElementById('challenge-input').value.trim();
+  document.getElementById('challenge-submit-btn').disabled = (v.length === 0);
+}
+
+function submitChallenge() {
+  if (!_currentChallengeFile) return;
+  const answer = document.getElementById('challenge-input').value.trim();
+  if (!answer) return;
+
+  const btn = document.getElementById('challenge-submit-btn');
+  btn.disabled = true;
+  btn.textContent = '評估中...';
+
+  fetch('/challenge', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({filename: _currentChallengeFile, answer}),
+  })
+  .then(r => r.json().then(data => ({status: r.status, data})))
+  .then(({status, data}) => {
+    btn.textContent = '再評一次';
+    btn.disabled = false;
+    if (status >= 400) {
+      alert('錯誤：' + (data.error || 'unknown'));
+      return;
+    }
+    renderChallengeFeedback(data);
+  })
+  .catch(e => {
+    alert('網路錯誤：' + e);
+    btn.textContent = '提交';
+    btn.disabled = false;
+  });
+}
+
+function renderChallengeFeedback(data) {
+  const got = data.got_right || [];
+  const missed = data.missed || [];
+  const coach = data.coaching || '';
+
+  let html = '';
+  if (got.length) {
+    html += `
+      <div class="feedback-section">
+        <div class="feedback-label got">✓ 你抓對的（${got.length}）</div>
+        <ul class="feedback-list">${got.map(s => `<li>${esc(s)}</li>`).join('')}</ul>
+      </div>`;
+  }
+  if (missed.length) {
+    html += `
+      <div class="feedback-section">
+        <div class="feedback-label missed">✗ 你漏掉的（${missed.length}）</div>
+        <ul class="feedback-list">${missed.map(s => `<li>${esc(s)}</li>`).join('')}</ul>
+      </div>`;
+  }
+  if (coach) {
+    html += `
+      <div class="feedback-section">
+        <div class="feedback-label coach">💬 教練</div>
+        <div class="feedback-coach">${esc(coach)}</div>
+      </div>`;
+  }
+  if (!html) {
+    html = '<div class="feedback-coach">（沒拿到評估資料）</div>';
+  }
+
+  const fb = document.getElementById('challenge-feedback');
+  fb.innerHTML = html;
+  fb.classList.add('visible');
+}
+
+// Esc 關閉 modal
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' &&
+      document.getElementById('challenge-modal').classList.contains('visible')) {
+    closeChallenge();
+  }
+});
+
 // Re-render card container from JSON (post-chain reload)
-const CATEGORY_ORDER = ["投資/經濟","AI/科技","演講/溝通","思想/個人成長","健康/科學"];
+// CATEGORY_ORDER 由 server 注入，跟 category_taxonomy.yaml 同步
+const CATEGORY_ORDER = {{ category_order | tojson }};
 
 function renderCards(summaries) {
   // Group
@@ -593,8 +999,26 @@ function renderCards(summaries) {
            </a>`
         : '';
 
+      const challengeBtnHtml = `<button class="challenge-btn"
+              data-filename="${esc(item.filename)}"
+              title="考自己（合上摘要 active recall）"
+              onclick="event.stopPropagation(); openChallenge(this.dataset.filename)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="1.8"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="9"/>
+              <path d="M9.5 9a2.5 2.5 0 1 1 4 2c-.8.8-1.5 1.3-1.5 2.5"/>
+              <line x1="12" y1="17" x2="12" y2="17.01"/>
+            </svg>
+          </button>`;
+
       const pitchHtml = item.elevator_pitch
         ? `<div class="card-pitch">${esc(item.elevator_pitch)}</div>` : '';
+
+      const thesisHtml = item.thesis
+        ? `<div class="card-thesis">${esc(item.thesis)}</div>` : '';
+      const actionHtml = item.weekly_action
+        ? `<div class="card-action">${esc(item.weekly_action)}</div>` : '';
 
       const tagsHtml = tags.length
         ? `<div class="card-tags">${tags.map(t => `<span class="card-tag">${esc(t)}</span>`).join('')}</div>`
@@ -604,10 +1028,13 @@ function renderCards(summaries) {
         <div class="card-header" onclick="toggleCard(this)">
           <span class="card-title-text">${esc(item.filename)}</span>
           <div class="card-actions">
+            ${challengeBtnHtml}
             ${mindmapBtnHtml}
             <span class="card-arrow">▸</span>
           </div>
         </div>
+        ${thesisHtml}
+        ${actionHtml}
         <div class="card-body">
           ${pitchHtml}
           <div class="card-meta">${esc(item.speaker)} · ${esc(item.duration)}</div>

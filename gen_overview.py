@@ -13,6 +13,10 @@ def main():
         return
 
     lines = [
+        "---",
+        "_skip_index: true",
+        "---",
+        "",
         "# 心智圖總覽",
         "",
         "> 由所有 .mmd 自動拼接而成。在 VS Code 開此檔，按 Ctrl+Shift+V 即可一次看全部心智圖。",

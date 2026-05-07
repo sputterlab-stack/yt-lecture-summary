@@ -3,6 +3,11 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+
+def _yaml_quote(s: str) -> str:
+    """Safely encode a string as a YAML double-quoted scalar (handles ':, '\"', \\n)."""
+    return json.dumps(str(s), ensure_ascii=False)
+
 from openai import OpenAI
 
 from config import DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, DEEPSEEK_MODEL
@@ -81,7 +86,10 @@ def first_principles_summary(transcript_text, language, source_meta):
         "speaker": data.get("speaker", "未知"),
         "language": data.get("language", language),
         "category": data.get("category", "未分類"),
+        "subcategory": data.get("subcategory", ""),
         "tags": data.get("tags", []),
+        "thesis": data.get("thesis", ""),
+        "weekly_action": data.get("weekly_action", ""),
         "summary_md": data["summary_md"],
     }
 
@@ -100,6 +108,9 @@ def write_summary(result: dict, source_meta: dict, output_root: Path) -> Path:
     generated_at = datetime.now(timezone.utc).isoformat()
     tags_str = ", ".join(result["tags"]) if result["tags"] else ""
 
+    subcategory_line = f"subcategory: {result['subcategory']}\n" if result.get("subcategory") else ""
+    thesis_line = f"thesis: {_yaml_quote(result['thesis'])}\n" if result.get("thesis") else ""
+    action_line = f"weekly_action: {_yaml_quote(result['weekly_action'])}\n" if result.get("weekly_action") else ""
     frontmatter = f"""---
 source: {source_meta['source_url']}
 yt_title: {source_meta['yt_title']}
@@ -109,7 +120,7 @@ duration: {source_meta['duration']}
 generated_at: {generated_at}
 model: {DEEPSEEK_MODEL}
 category: {result['category']}
-tags: [{tags_str}]
+{subcategory_line}{thesis_line}{action_line}tags: [{tags_str}]
 ---
 
 # {result['filename']}

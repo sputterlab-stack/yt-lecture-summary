@@ -8,8 +8,11 @@
 - 🎙️ YouTube URL → Whisper 轉逐字稿（CUDA 加速）
 - 🧠 DeepSeek V4-Pro 用「第一性原理」拆解演講者思考骨架（8 段結構分析 + 精選摘要）
 - 🗺️ 自動產 mermaid 心智圖（`.mmd`）+ Markmap 互動式 HTML
-- 🌐 Flask web dashboard：URL 觸發整套 chain、9 步進度條、卡片網格、tag 搜尋過濾
-- 📚 frontmatter 自動分類 + INDEX 索引
+- 🌐 Flask web dashboard：**多 URL 一次貼批次**轉換（Hybrid 並行：Whisper 排隊、下載+DeepSeek 並行）+ 多 task 進度卡 + tag 搜尋過濾
+- 🎯 每篇自動濃縮 **核心主張一句話 + 這週能做的一個動作**（壓縮入口頻寬、觸發應用）
+- 📝 **「考自己」按鈕**（Active Recall）：合上摘要、用自己的話講，LLM 對齊原內容指出你漏掉/抓錯的點
+- 🗂️ 兩層 taxonomy 治理（`category_taxonomy.yaml` 主類+子類 + alias 折疊舊類別）
+- 📚 frontmatter 自動分類 + INDEX 二層索引
 
 ---
 
@@ -95,8 +98,10 @@ code --install-extension tomoyukim.vscode-mermaid-editor
 
 啟 Flask server → 自動開瀏覽器 `localhost:5000` → URL 輸入框轉新影片 + 卡片網格瀏覽既有摘要。
 
-- **上方輸入框**：貼 YouTube URL → 點「轉換」→ 進度條即時顯示 9 步 → 完成自動重新載入卡片
-- **下方卡片網格**：所有摘要按 category 分群，含 elevator pitch、speaker、tag chips
+- **上方 textarea（多行 URL）**：一行一個，可貼一批 → 點「轉換」→ 立刻可繼續貼下一批；下方 task 卡片網格累積顯示每筆 5 步進度（藍=跑、黃=等批次、綠=完成、紅=失敗）
+- **Hybrid 並行**：Whisper 階段全域 lock 串行（防 GPU OOM），下載 + DeepSeek 階段並行；上限以 `PARALLEL_LIMIT` env 控制（預設 3）
+- **下方卡片網格**：所有摘要按主類分群；卡片正面顯示**核心主張**（thesis）+ **💡 這週能做的動作**（黃色 box），點展開看 elevator pitch / 講者 / tags
+- **「考自己」按鈕**（卡片右上問號 icon）：跳出 modal、合上摘要寫核心論點、LLM 對齊評估「你抓對的 / 漏掉的 / 教練引導」（Esc 關閉）
 - **即時過濾**：搜尋框（標題 / 講者 / tag）+ 多選 tag chips（OR 邏輯）+ 清除按鈕
 
 視窗保持開啟即 server 運作，關掉視窗即停止。
@@ -119,7 +124,16 @@ code --install-extension tomoyukim.vscode-mermaid-editor
 | 字幕 | `outputs/transcripts/{標題}.srt` | 帶時間軸逐字稿 |
 | 索引 | `outputs/summaries/INDEX.md` | 按 category 分群的總表 |
 
-`.md` 開頭含 YAML frontmatter（source / yt_title / speaker / language / duration / generated_at / model / category / tags）。
+`.md` 開頭含 YAML frontmatter：
+
+| 欄位 | 說明 |
+|---|---|
+| `source` / `yt_title` / `speaker` / `language` / `duration` / `generated_at` / `model` | 元資料 |
+| `category` | 主類（必須是 `category_taxonomy.yaml` 列出的） |
+| `subcategory` | 子類（taxonomy 列出的，或合理新建 4-8 字） |
+| `thesis` | 一句話核心主張（30 字內，立場句） |
+| `weekly_action` | 這週能做的具體小動作（50 字內，5 分鐘可開始） |
+| `tags` | 3-6 個自由標籤（細分主題、概念、講者特色） |
 
 ---
 
@@ -161,28 +175,99 @@ code "outputs/summaries/心智圖總覽.md"
 
 | 檔案 | 角色 | 何時跑 |
 |---|---|---|
-| `yt_summary.py` | 主流程：URL → 摘要 .md + 字幕 .srt | 每次新影片 |
-| `gen_mindmap.py` | 後處理：掃 .md 補對應 .mmd | 新摘要產生後 |
-| `gen_index.py` | 後處理：重建 INDEX.md | 新摘要產生後 |
-| `gen_overview.py` | 後處理：拼所有 .mmd 成「心智圖總覽.md」 | 新心智圖產生後 |
-| `gen_markmap.py` | 後處理：用 markmap-cli 把 .md 轉互動式 HTML | 新摘要產生後 |
-| `web_server.py` | Flask web 後端：URL 觸發 chain + 提供卡片網格 dashboard | 雙擊「開啟UI.bat」啟動 |
-| `一鍵啟動.bat` | 把上面五個串起來（純命令列 fallback） | 不需 web UI 時用 |
-| `prompts.py` | 集中 LLM prompt（摘要 + 心智圖兩組） | 想調 prompt 時改 |
-| `summarizer.py` / `transcriber.py` / `config.py` | 主流程內部模組 | 不直接呼叫 |
+| `yt_summary.py` | 主流程 CLI：URL → 摘要 .md + 字幕 .srt | 命令列單一影片 |
+| `web_server.py` | Flask web 後端：多 URL 批次、Hybrid 並行、`/challenge` endpoint | 雙擊「開啟UI.bat」啟動 |
+| `gen_mindmap.py` | 掃 .md 補對應 .mmd（支援 `--force`） | 新摘要產生後 |
+| `gen_index.py` | 套 `category_taxonomy.yaml` 重建 INDEX.md（二層） | 新摘要產生後 |
+| `gen_overview.py` | 拼所有 .mmd 成「心智圖總覽.md」 | 新心智圖產生後 |
+| `gen_markmap.py` | 用 markmap-cli 把 .md 轉互動式 HTML | 新摘要產生後 |
+| `recategorize.py` | 一次性批次：用 taxonomy 重判既有摘要的 category + subcategory | 改 taxonomy 後 |
+| `enrich_summary.py` | 一次性批次：補既有摘要的 thesis + weekly_action | 加新欄位後 |
+| `category_taxonomy.yaml` | 主類+子類二層樹 + alias 折疊 + skip_files 黑名單 | 想調分類時改 |
+| `prompts.py` | 集中所有 LLM prompts（摘要、心智圖、考自己） | 想調 prompt 時改 |
+| `一鍵啟動.bat` / `run-cli.sh` | 命令列 chain（不用 web UI） | fallback |
 | `setup.bat` / `setup.sh` | 一次性建 venv + 裝依賴 | 第一次 clone 後跑 |
-| `run-ui.sh` | Mac/Linux 啟動 web dashboard | 對應 `開啟UI.bat` |
-| `run-cli.sh` | Mac/Linux chain 啟動 | 對應 `一鍵啟動.bat` |
+| `summarizer.py` / `transcriber.py` / `config.py` | 主流程內部模組 | 不直接呼叫 |
 
-### `gen_mindmap.py` 旗標
+### 批次工具旗標
 
 ```bash
-python gen_mindmap.py            # 只產缺的（已有 .mmd 跳過）
-python gen_mindmap.py --force    # 全部重新產（覆蓋既有）
+# 重新分類（讀取 category_taxonomy.yaml + 跑 LLM 重判）
+python recategorize.py            # dry-run 預覽
+python recategorize.py --apply    # 寫入 frontmatter
+python recategorize.py --file 標題.md   # 單篇 dry-run
+
+# 補 thesis + weekly_action（既有摘要欠缺時）
+python enrich_summary.py          # dry-run
+python enrich_summary.py --apply  # 寫入
+
+# 心智圖
+python gen_mindmap.py             # 只產缺的
+python gen_mindmap.py --force     # 全部重產
 ```
 
 ---
 
-## 六、切換模型
+## 六、分類治理（taxonomy）
 
-編輯 `config.py` 的 `DEEPSEEK_MODEL`。摘要與心智圖共用同一個模型（兩組 prompt 都走 DeepSeek）。
+`category_taxonomy.yaml` 定義主類 + 子類二層樹：
+
+```yaml
+taxonomy:
+  投資/經濟:
+    - 個股拆解
+    - 宏觀經濟
+    - ...
+  AI/科技:
+    - AI 應用/Agent
+    - ...
+  # 其他主類
+
+aliases:           # 過時主類折疊到 canonical
+  政治/歷史: 思想/個人成長
+  社會/政治: 思想/個人成長
+
+skip_files:        # gen_index 跳過（工具產物）
+  - 心智圖總覽.md
+```
+
+**新增主類**：直接編 yaml → 重啟 web_server。**新增子類**：edit yaml 即可（gen_index 用 yaml 順序排）。**改 taxonomy 後**：跑 `python recategorize.py --apply` 重判所有舊摘要。
+
+---
+
+## 七、Hybrid 並行（多工）
+
+Web dashboard 接收多 URL 時三層並行控制：
+
+| 階段 | 控制 |
+|---|---|
+| 整體 task 數 | `PARALLEL_LIMIT` env（預設 3） |
+| 下載音訊 | 並行（網路 IO） |
+| Whisper 轉文字 | 全域 lock 串行（防 GPU OOM） |
+| DeepSeek 摘要 | `DEEPSEEK_PARALLEL` semaphore（預設 3，撞 rate limit 時降至 1） |
+| 寫檔 + 心智圖 | 並行 |
+| 批次後處理（gen_index/overview/markmap） | 全部 task 完成後 debounce 跑一次 |
+
+```bash
+# 自訂並行數
+PARALLEL_LIMIT=2 DEEPSEEK_PARALLEL=2 python web_server.py
+```
+
+---
+
+## 八、Active Recall（考自己）
+
+每張摘要卡右上「？」按鈕點下去：跳 modal、合上摘要寫核心論點、LLM 對齊評估。
+
+回傳：
+- ✓ **抓對的點**（你寫對的核心）
+- ✗ **漏掉的點**（你以為懂但沒抓到）
+- 💬 **教練引導**（下次該注意什麼）
+
+API：`POST /challenge` body `{filename, answer}` → `{got_right, missed, coaching}`。
+
+---
+
+## 九、切換模型
+
+編輯 `config.py` 的 `DEEPSEEK_MODEL`。摘要 / 心智圖 / 考自己 / 重分類 / enrich 共用同一模型。
