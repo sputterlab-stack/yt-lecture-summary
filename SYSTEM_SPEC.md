@@ -15,6 +15,7 @@
 │  ├─ /convert   POST {urls: [...]}    起 N 個 task             │
 │  ├─ /tasks     GET   全部 task 狀態                            │
 │  ├─ /status/<id>     單一 task                                │
+│  ├─ /intro/<file>    GET   抽某篇「## 導讀」段                  │
 │  ├─ /challenge POST {filename, answer}  Active Recall        │
 │  ├─ /api/summaries   全部摘要 metadata                         │
 │  └─ /                Server-rendered dashboard                │
@@ -132,6 +133,23 @@ skip_files:
 
 單筆 task snapshot（同上 `tasks[i]` 結構）。404 if not found。
 
+### `GET /intro/<filename>`
+
+```json
+// Response (200)
+{
+  "filename": "...",
+  "intro": "純散文導讀全文（含段落 \\n\\n 分隔）",
+  "missing": false  // true 表示該篇還沒產生導讀
+}
+
+// Errors
+400 { "error": "filename 不合法" }   // 含 / \ ..
+404 { "error": "找不到摘要：..." }
+```
+
+`filename` 不含副檔名。從 `.md` body 抽 `## 導讀.*\n` 標題行之後到下個 `## ...` 標題前的內容。
+
 ### `POST /challenge`
 
 ```json
@@ -212,6 +230,7 @@ done (step 5)
 |---|---|---|
 | `SYSTEM_PROMPT` + `USER_PROMPT_TEMPLATE` | 主摘要（含 thesis / weekly_action / category / subcategory） | `summarizer.first_principles_summary` |
 | `MINDMAP_SYSTEM_PROMPT` + `MINDMAP_USER_PROMPT_TEMPLATE` | Mermaid 心智圖 | `gen_mindmap.py` |
+| `INTRO_SYSTEM` + `INTRO_USER_TEMPLATE` | 線性導讀 | `enrich_intro.py` |
 | `RECALL_CHALLENGE_SYSTEM` + `RECALL_CHALLENGE_USER_TEMPLATE` | Active Recall 評估 | `web_server /challenge` |
 
 `USER_PROMPT_TEMPLATE` 在 module load 時用 `_RAW_USER_PROMPT.replace("{TAXONOMY_TEXT}", TAXONOMY_TEXT)` 動態注入 taxonomy；其餘 `{yt_title}` `{transcript}` 等仍由 `summarizer` `.format()` 處理。
@@ -222,6 +241,7 @@ done (step 5)
 |---|---|---|
 | `recategorize.py` | 改 taxonomy 後重判 | frontmatter `category` + `subcategory`，不動 summary / tags |
 | `enrich_summary.py` | 加 thesis/action 欄後補舊資料 | frontmatter `thesis` + `weekly_action`，不動 summary / tags |
+| `enrich_intro.py` | 加導讀章節後補舊資料 | body 插入「## 導讀（線性帶入）」段（在 `## 精選摘要` 前）；不動 frontmatter 與其他段；預設跳過已有導讀者，`--force` 強制重產 |
 
 兩者共用 `recategorize.split_frontmatter` / `extract_summary_top` / `update_frontmatter_keys`。`update_frontmatter_keys` 精準 in-place 替換指定 key（保留其他行原樣含 datetime / list / 註解）。
 

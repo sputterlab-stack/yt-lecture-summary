@@ -8,6 +8,7 @@
 
 import json
 import os
+import re
 import sys
 import subprocess
 import threading
@@ -434,6 +435,34 @@ def _get_deepseek_client() -> OpenAI:
             if _DEEPSEEK_CLIENT is None:
                 _DEEPSEEK_CLIENT = OpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
     return _DEEPSEEK_CLIENT
+
+
+_INTRO_HEADING_RE = re.compile(r"^##\s*導讀.*\n", re.MULTILINE)  # 含整行標題（避免「（線性帶入）」殘留進 body）
+
+
+@app.route("/intro/<path:filename>")
+def intro(filename: str):
+    """抽某篇 .md 中的「## 導讀」段純文字回給 dashboard。"""
+    if "/" in filename or "\\" in filename or ".." in filename:
+        return jsonify({"error": "filename 不合法"}), 400
+
+    md_path = SUMMARIES_DIR / f"{filename}.md"
+    if not md_path.exists():
+        return jsonify({"error": f"找不到摘要：{filename}"}), 404
+
+    text = md_path.read_text(encoding="utf-8")
+    _, body, _ = split_frontmatter(text)
+
+    m = _INTRO_HEADING_RE.search(body)
+    if not m:
+        return jsonify({"intro": "", "missing": True, "filename": filename})
+
+    after = body[m.end():]
+    next_h2 = re.search(r"^##\s", after, re.MULTILINE)
+    end_pos = next_h2.start() if next_h2 else len(after)
+    intro_text = after[:end_pos].strip()
+
+    return jsonify({"intro": intro_text, "missing": False, "filename": filename})
 
 
 @app.route("/challenge", methods=["POST"])

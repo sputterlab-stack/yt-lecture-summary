@@ -10,6 +10,7 @@
 - 🗺️ 自動產 mermaid 心智圖（`.mmd`）+ Markmap 互動式 HTML
 - 🌐 Flask web dashboard：**多 URL 一次貼批次**轉換（Hybrid 並行：Whisper 排隊、下載+DeepSeek 並行）+ 多 task 進度卡 + tag 搜尋過濾
 - 🎯 每篇自動濃縮 **核心主張一句話 + 這週能做的一個動作**（壓縮入口頻寬、觸發應用）
+- 📖 **「導讀」按鈕**：800-2000 字線性敘事帶入（先有 narrative scaffolding 再去看心智圖網路）
 - 📝 **「考自己」按鈕**（Active Recall）：合上摘要、用自己的話講，LLM 對齊原內容指出你漏掉/抓錯的點
 - 🗂️ 兩層 taxonomy 治理（`category_taxonomy.yaml` 主類+子類 + alias 折疊舊類別）
 - 📚 frontmatter 自動分類 + INDEX 二層索引
@@ -101,7 +102,8 @@ code --install-extension tomoyukim.vscode-mermaid-editor
 - **上方 textarea（多行 URL）**：一行一個，可貼一批 → 點「轉換」→ 立刻可繼續貼下一批；下方 task 卡片網格累積顯示每筆 5 步進度（藍=跑、黃=等批次、綠=完成、紅=失敗）
 - **Hybrid 並行**：Whisper 階段全域 lock 串行（防 GPU OOM），下載 + DeepSeek 階段並行；上限以 `PARALLEL_LIMIT` env 控制（預設 3）
 - **下方卡片網格**：所有摘要按主類分群；卡片正面顯示**核心主張**（thesis）+ **💡 這週能做的動作**（黃色 box），點展開看 elevator pitch / 講者 / tags
-- **「考自己」按鈕**（卡片右上問號 icon）：跳出 modal、合上摘要寫核心論點、LLM 對齊評估「你抓對的 / 漏掉的 / 教練引導」（Esc 關閉）
+- **「📖 導讀」按鈕**（卡片右上書本 icon）：跳 modal 顯示 800-2000 字線性敘事，建議先看完導讀再看心智圖（網狀結構）
+- **「考自己」按鈕**（卡片右上問號 icon）：跳 modal、合上摘要寫核心論點、LLM 對齊評估「你抓對的 / 漏掉的 / 教練引導」（Esc 關閉）
 - **即時過濾**：搜尋框（標題 / 講者 / tag）+ 多選 tag chips（OR 邏輯）+ 清除按鈕
 
 視窗保持開啟即 server 運作，關掉視窗即停止。
@@ -183,6 +185,7 @@ code "outputs/summaries/心智圖總覽.md"
 | `gen_markmap.py` | 用 markmap-cli 把 .md 轉互動式 HTML | 新摘要產生後 |
 | `recategorize.py` | 一次性批次：用 taxonomy 重判既有摘要的 category + subcategory | 改 taxonomy 後 |
 | `enrich_summary.py` | 一次性批次：補既有摘要的 thesis + weekly_action | 加新欄位後 |
+| `enrich_intro.py` | 一次性批次：補既有摘要的「## 導讀（線性帶入）」段（800-2000 字散文） | 加新欄位後 |
 | `category_taxonomy.yaml` | 主類+子類二層樹 + alias 折疊 + skip_files 黑名單 | 想調分類時改 |
 | `prompts.py` | 集中所有 LLM prompts（摘要、心智圖、考自己） | 想調 prompt 時改 |
 | `一鍵啟動.bat` / `run-cli.sh` | 命令列 chain（不用 web UI） | fallback |
@@ -200,6 +203,11 @@ python recategorize.py --file 標題.md   # 單篇 dry-run
 # 補 thesis + weekly_action（既有摘要欠缺時）
 python enrich_summary.py          # dry-run
 python enrich_summary.py --apply  # 寫入
+
+# 補導讀段（800-2000 字線性敘事）
+python enrich_intro.py            # dry-run（預設跳過已有導讀）
+python enrich_intro.py --apply    # 寫入
+python enrich_intro.py --apply --force  # 強制重產所有篇
 
 # 心智圖
 python gen_mindmap.py             # 只產缺的
@@ -255,7 +263,19 @@ PARALLEL_LIMIT=2 DEEPSEEK_PARALLEL=2 python web_server.py
 
 ---
 
-## 八、Active Recall（考自己）
+## 八、導讀 + Active Recall（學習迴路）
+
+兩個學習通道是互補的：
+
+| 通道 | 形式 | 角色 |
+|---|---|---|
+| 📖 **導讀** | 800-2000 字線性敘事 | 入口前的 narrative scaffolding（先建立 mental model） |
+| 🗺️ **心智圖** | 網狀結構（mermaid mindmap） | 概念之間的連結（建立思維網路） |
+| 📝 **考自己** | 合上摘要寫 / LLM 對齊 | 看完後 active recall（把辨識升級為回憶） |
+
+建議使用順序：**讀 thesis → 點 📖 導讀讀完 → 看心智圖 → 點考自己驗證自己抓到什麼漏掉什麼**。
+
+## 九、Active Recall（考自己）— 詳細
 
 每張摘要卡右上「？」按鈕點下去：跳 modal、合上摘要寫核心論點、LLM 對齊評估。
 
@@ -268,6 +288,6 @@ API：`POST /challenge` body `{filename, answer}` → `{got_right, missed, coach
 
 ---
 
-## 九、切換模型
+## 十、切換模型
 
 編輯 `config.py` 的 `DEEPSEEK_MODEL`。摘要 / 心智圖 / 考自己 / 重分類 / enrich 共用同一模型。
