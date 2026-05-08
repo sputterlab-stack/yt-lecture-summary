@@ -106,6 +106,25 @@
       border-radius: 6px;
       padding: 10px 12px;
       font-size: 0.85em;
+      transition: opacity 0.5s ease, transform 0.5s ease;
+    }
+    .task-card.fading {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+    .btn-clear-tasks {
+      padding: 4px 10px;
+      font-size: 0.78em;
+      border: 1px solid #d1d5db;
+      border-radius: 4px;
+      background: #fff;
+      color: #6b7280;
+      cursor: pointer;
+    }
+    .btn-clear-tasks:hover { background: #f3f4f6; }
+    .btn-clear-tasks:disabled {
+      color: #d1d5db;
+      cursor: not-allowed;
     }
     .task-card.done { background: #f0fdf4; border-color: #bbf7d0; }
     .task-card.error { background: #fef2f2; border-color: #fecaca; }
@@ -509,7 +528,10 @@
   <div class="tasks-area" id="tasks-area">
     <div class="tasks-header">
       <span id="tasks-summary">0 個任務</span>
-      <span class="batch-status" id="batch-status"></span>
+      <div style="display:flex;gap:10px;align-items:center;">
+        <span class="batch-status" id="batch-status"></span>
+        <button class="btn-clear-tasks" id="btn-clear-tasks" onclick="clearFinishedTasks()" disabled>清除已完成</button>
+      </div>
     </div>
     <div class="task-grid" id="task-grid"></div>
   </div>
@@ -692,6 +714,8 @@ function applyFilter() {
 let _pollTimer = null;
 let _activeTaskIds = new Set();
 let _reloadDone = false;  // 避免重複觸發 reloadCards
+let _lastTasksSnapshot = [];
+const TASK_AUTO_FADE_MS = 30000;  // 完成後 30 秒自動從卡片網格移除
 
 function startConvert() {
   const ta = document.getElementById('yt-url');
@@ -752,12 +776,27 @@ function pollTasks() {
 }
 
 function renderTasks(allTasks, batch) {
+  _lastTasksSnapshot = allTasks;
+
   // 顯示順序：本 session 起的 task 優先；若使用者重新整理頁面 _activeTaskIds 是空的，
   // 此時把 server 還在跑的 task 加入追蹤
   if (_activeTaskIds.size === 0) {
     allTasks.filter(t => t.status !== 'done' && t.status !== 'error')
       .forEach(t => _activeTaskIds.add(t.task_id));
   }
+
+  // 自動淡出：完成 / 錯誤超過 TASK_AUTO_FADE_MS 從追蹤清掉
+  const now = Date.now();
+  for (const t of allTasks) {
+    if (!_activeTaskIds.has(t.task_id)) continue;
+    if (t.status !== 'done' && t.status !== 'error') continue;
+    if (!t.finished_at) continue;
+    const finishedMs = new Date(t.finished_at).getTime();
+    if (!isNaN(finishedMs) && now - finishedMs > TASK_AUTO_FADE_MS) {
+      _activeTaskIds.delete(t.task_id);
+    }
+  }
+
   const display = allTasks.filter(t => _activeTaskIds.has(t.task_id));
 
   const counts = {
@@ -772,9 +811,29 @@ function renderTasks(allTasks, batch) {
   document.getElementById('batch-status').textContent =
     batch.running ? '批次後處理中…' : '';
 
+  // 「清除已完成」按鈕：有 done/error 才能按
+  const clearBtn = document.getElementById('btn-clear-tasks');
+  clearBtn.disabled = (counts.done + counts.error === 0);
+
+  // 全部清空時隱藏整個 tasks-area
+  const tasksArea = document.getElementById('tasks-area');
+  if (display.length === 0 && !batch.running) {
+    tasksArea.classList.remove('visible');
+  }
+
   const grid = document.getElementById('task-grid');
   grid.innerHTML = '';
   display.forEach(t => grid.appendChild(makeTaskCard(t)));
+}
+
+function clearFinishedTasks() {
+  _lastTasksSnapshot.forEach(t => {
+    if (t.status === 'done' || t.status === 'error') {
+      _activeTaskIds.delete(t.task_id);
+    }
+  });
+  if (_pollTimer) clearTimeout(_pollTimer);
+  pollTasks();
 }
 
 function makeTaskCard(t) {
