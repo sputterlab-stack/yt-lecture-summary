@@ -1065,11 +1065,32 @@ function openIntro(filename) {
         return;
       }
       if (data.missing) {
-        contentEl.textContent = '此摘要尚未產生導讀。請執行 `python enrich_intro.py --apply`。';
-        contentEl.classList.add('empty');
+        generateIntroNow(filename, contentEl);
         return;
       }
       contentEl.textContent = data.intro;
+      contentEl.classList.remove('empty');
+      contentEl.scrollTop = 0;
+    })
+    .catch(e => {
+      contentEl.textContent = '網路錯誤：' + e;
+      contentEl.classList.add('empty');
+    });
+}
+
+function generateIntroNow(filename, contentEl) {
+  contentEl.textContent = '此篇尚未產生導讀，正在即時生成（約 15–30 秒，請勿關閉）…';
+  contentEl.classList.add('empty');
+
+  fetch('/intro/' + encodeURIComponent(filename) + '/generate', {method: 'POST'})
+    .then(r => r.json().then(d => ({status: r.status, d})))
+    .then(({status, d}) => {
+      if (status >= 400) {
+        contentEl.textContent = '產生失敗：' + (d.error || '未知');
+        contentEl.classList.add('empty');
+        return;
+      }
+      contentEl.textContent = d.intro;
       contentEl.classList.remove('empty');
       contentEl.scrollTop = 0;
     })

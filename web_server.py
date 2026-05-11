@@ -25,6 +25,11 @@ import config  # noqa: F401（為了 .env 載入副作用）
 import summarizer
 import transcriber
 from config import DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, DEEPSEEK_MODEL, OUTPUT_ROOT, WHISPER_MODEL
+from enrich_intro import (
+    extract_breakdown,
+    generate_intro as _generate_intro_text,
+    insert_intro,
+)
 from prompts import RECALL_CHALLENGE_SYSTEM, RECALL_CHALLENGE_USER_TEMPLATE
 from recategorize import extract_summary_top, split_frontmatter
 
@@ -463,6 +468,40 @@ def intro(filename: str):
     intro_text = after[:end_pos].strip()
 
     return jsonify({"intro": intro_text, "missing": False, "filename": filename})
+
+
+@app.route("/intro/<path:filename>/generate", methods=["POST"])
+def intro_generate(filename: str):
+    """即時為單篇 .md 產導讀並寫回檔案。回傳 {intro: 純文字}。"""
+    if "/" in filename or "\\" in filename or ".." in filename:
+        return jsonify({"error": "filename 不合法"}), 400
+
+    md_path = SUMMARIES_DIR / f"{filename}.md"
+    if not md_path.exists():
+        return jsonify({"error": f"找不到摘要：{filename}"}), 404
+
+    text = md_path.read_text(encoding="utf-8")
+    fm_block, body, _fm = split_frontmatter(text)
+
+    breakdown = extract_breakdown(body)
+    if not breakdown:
+        return jsonify({"error": "找不到「## 完整拆解」段，無法產導讀"}), 400
+
+    try:
+        client = _get_deepseek_client()
+        with _DEEPSEEK_SEM:
+            intro_text = _generate_intro_text(client, filename, breakdown)
+    except Exception as e:
+        return jsonify({"error": f"{type(e).__name__}: {e}"}), 500
+
+    if not intro_text or len(intro_text) < 200:
+        return jsonify({"error": f"LLM 回傳過短（{len(intro_text)} 字），疑似失敗"}), 500
+
+    new_body = insert_intro(body, intro_text)
+    new_text = fm_block + "\n\n" + new_body.lstrip("\n")
+    md_path.write_text(new_text, encoding="utf-8")
+
+    return jsonify({"intro": intro_text, "filename": filename})
 
 
 @app.route("/challenge", methods=["POST"])
