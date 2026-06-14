@@ -6,6 +6,7 @@
 #   GET  /tasks             -> 所有 task 狀態（多工 polling 用）
 #   GET  /api/summaries     -> JSON list of all summaries (post-batch reload)
 
+import html
 import json
 import os
 import re
@@ -29,6 +30,16 @@ from enrich_intro import (
     extract_breakdown,
     generate_intro as _generate_intro_text,
     insert_intro,
+)
+from enrich_digest import (
+    generate_digest as _generate_digest_text,
+    insert_digest,
+    srt_to_timestamped_text,
+    TRANSCRIPTS_DIR,
+)
+from enrich_logic import (
+    generate_logic as _generate_logic_text,
+    insert_logic,
 )
 from prompts import RECALL_CHALLENGE_SYSTEM, RECALL_CHALLENGE_USER_TEMPLATE
 from recategorize import extract_summary_top, split_frontmatter
@@ -443,6 +454,8 @@ def _get_deepseek_client() -> OpenAI:
 
 
 _INTRO_HEADING_RE = re.compile(r"^##\s*導讀.*\n", re.MULTILINE)  # 含整行標題（避免「（線性帶入）」殘留進 body）
+_DIGEST_HEADING_RE = re.compile(r"^##\s*乾貨摘要.*\n", re.MULTILINE)  # 含整行標題
+_LOGIC_HEADING_RE = re.compile(r"^##\s*邏輯拆解.*\n", re.MULTILINE)  # 含整行標題
 
 
 @app.route("/intro/<path:filename>")
@@ -502,6 +515,182 @@ def intro_generate(filename: str):
     md_path.write_text(new_text, encoding="utf-8")
 
     return jsonify({"intro": intro_text, "filename": filename})
+
+
+@app.route("/digest/<path:filename>")
+def digest(filename: str):
+    """抽某篇 .md 中的「## 乾貨摘要」段純文字回給 dashboard。"""
+    if "/" in filename or "\\" in filename or ".." in filename:
+        return jsonify({"error": "filename 不合法"}), 400
+
+    md_path = SUMMARIES_DIR / f"{filename}.md"
+    if not md_path.exists():
+        return jsonify({"error": f"找不到摘要：{filename}"}), 404
+
+    text = md_path.read_text(encoding="utf-8")
+    _, body, _ = split_frontmatter(text)
+
+    m = _DIGEST_HEADING_RE.search(body)
+    if not m:
+        return jsonify({"digest": "", "missing": True, "filename": filename})
+
+    after = body[m.end():]
+    next_h2 = re.search(r"^##\s", after, re.MULTILINE)
+    end_pos = next_h2.start() if next_h2 else len(after)
+    digest_text = after[:end_pos].strip()
+
+    return jsonify({"digest": digest_text, "missing": False, "filename": filename})
+
+
+@app.route("/digest/<path:filename>/generate", methods=["POST"])
+def digest_generate(filename: str):
+    """即時為單篇 .md 產乾貨摘要並寫回檔案。回傳 {digest: 純文字}。"""
+    if "/" in filename or "\\" in filename or ".." in filename:
+        return jsonify({"error": "filename 不合法"}), 400
+
+    md_path = SUMMARIES_DIR / f"{filename}.md"
+    if not md_path.exists():
+        return jsonify({"error": f"找不到摘要：{filename}"}), 404
+
+    text = md_path.read_text(encoding="utf-8")
+    fm_block, body, _fm = split_frontmatter(text)
+
+    srt_path = TRANSCRIPTS_DIR / f"{filename}.srt"
+    if not srt_path.exists():
+        return jsonify({"error": f"找不到逐字稿 {filename}.srt，無法產帶時間戳乾貨"}), 400
+    transcript = srt_to_timestamped_text(srt_path)
+    if not transcript:
+        return jsonify({"error": "逐字稿解析為空，無法產乾貨"}), 400
+
+    try:
+        client = _get_deepseek_client()
+        with _DEEPSEEK_SEM:
+            digest_text = _generate_digest_text(client, filename, transcript)
+    except Exception as e:
+        return jsonify({"error": f"{type(e).__name__}: {e}"}), 500
+
+    if not digest_text or len(digest_text) < 80:
+        return jsonify({"error": f"LLM 回傳過短（{len(digest_text)} 字），疑似失敗"}), 500
+
+    new_body = insert_digest(body, digest_text)
+    new_text = fm_block + "\n\n" + new_body.lstrip("\n")
+    md_path.write_text(new_text, encoding="utf-8")
+
+    return jsonify({"digest": digest_text, "filename": filename})
+
+
+@app.route("/logic/<path:filename>")
+def logic(filename: str):
+    """抽某篇 .md 中的「## 邏輯拆解」段純文字回給 dashboard。"""
+    if "/" in filename or "\\" in filename or ".." in filename:
+        return jsonify({"error": "filename 不合法"}), 400
+
+    md_path = SUMMARIES_DIR / f"{filename}.md"
+    if not md_path.exists():
+        return jsonify({"error": f"找不到摘要：{filename}"}), 404
+
+    text = md_path.read_text(encoding="utf-8")
+    _, body, _ = split_frontmatter(text)
+
+    m = _LOGIC_HEADING_RE.search(body)
+    if not m:
+        return jsonify({"logic": "", "missing": True, "filename": filename})
+
+    after = body[m.end():]
+    next_h2 = re.search(r"^##\s", after, re.MULTILINE)
+    end_pos = next_h2.start() if next_h2 else len(after)
+    logic_text = after[:end_pos].strip()
+
+    return jsonify({"logic": logic_text, "missing": False, "filename": filename})
+
+
+@app.route("/logic/<path:filename>/generate", methods=["POST"])
+def logic_generate(filename: str):
+    """即時為單篇 .md 產邏輯拆解並寫回檔案。回傳 {logic: 純文字}。"""
+    if "/" in filename or "\\" in filename or ".." in filename:
+        return jsonify({"error": "filename 不合法"}), 400
+
+    md_path = SUMMARIES_DIR / f"{filename}.md"
+    if not md_path.exists():
+        return jsonify({"error": f"找不到摘要：{filename}"}), 404
+
+    text = md_path.read_text(encoding="utf-8")
+    fm_block, body, _fm = split_frontmatter(text)
+
+    breakdown = extract_breakdown(body)
+    if not breakdown:
+        return jsonify({"error": "找不到「## 完整拆解」段，無法產邏輯拆解"}), 400
+
+    try:
+        client = _get_deepseek_client()
+        with _DEEPSEEK_SEM:
+            logic_text = _generate_logic_text(client, filename, breakdown)
+    except Exception as e:
+        return jsonify({"error": f"{type(e).__name__}: {e}"}), 500
+
+    if not logic_text or len(logic_text) < 150:
+        return jsonify({"error": f"LLM 回傳過短（{len(logic_text)} 字），疑似失敗"}), 500
+
+    new_body = insert_logic(body, logic_text)
+    new_text = fm_block + "\n\n" + new_body.lstrip("\n")
+    md_path.write_text(new_text, encoding="utf-8")
+
+    return jsonify({"logic": logic_text, "filename": filename})
+
+
+# ---------------------------------------------------------------------------
+# 乾貨快讀頁（standalone catch-up reading page）
+#   只顯示「標題 + 乾貨摘要」，無心智圖 / 學習工具；[mm:ss] 連到 YouTube 該時間點
+# ---------------------------------------------------------------------------
+_TS_LINK_RE = re.compile(r"\[(\d{1,3}):(\d{2})\]")
+
+
+def _extract_section(md_path: Path, heading_re) -> str:
+    try:
+        text = md_path.read_text(encoding="utf-8")
+    except Exception:
+        return ""
+    _, body, _ = split_frontmatter(text)
+    m = heading_re.search(body)
+    if not m:
+        return ""
+    after = body[m.end():]
+    nh = re.search(r"^##\s", after, re.MULTILINE)
+    return (after[:nh.start()] if nh else after).strip()
+
+
+def _youtube_id(url: str) -> str | None:
+    if not url:
+        return None
+    m = re.search(r"(?:youtu\.be/|[?&]v=|/embed/|/shorts/)([A-Za-z0-9_-]{11})", url)
+    return m.group(1) if m else None
+
+
+def _digest_to_html(digest: str, source: str) -> str:
+    """HTML-escape 乾貨內文；把 [mm:ss] 變成可跳到 YouTube 該時間點的連結。"""
+    if not digest:
+        return ""
+    esc = html.escape(digest)
+    vid = _youtube_id(source or "")
+    if vid:
+        def repl(m):
+            secs = int(m.group(1)) * 60 + int(m.group(2))
+            return (f'<a href="https://www.youtube.com/watch?v={vid}&t={secs}s" '
+                    f'target="_blank" rel="noopener" class="ts-link">{m.group(0)}</a>')
+        esc = _TS_LINK_RE.sub(repl, esc)
+    return esc
+
+
+@app.route("/catchup")
+def catchup_page():
+    entries = collect_summaries()
+    for e in entries:
+        md = SUMMARIES_DIR / e["path"]
+        e["digest_html"] = _digest_to_html(
+            _extract_section(md, _DIGEST_HEADING_RE), e.get("source")
+        )
+    groups = group_summaries(entries)
+    return render_template("catchup.html", groups=groups, total=len(entries))
 
 
 @app.route("/challenge", methods=["POST"])

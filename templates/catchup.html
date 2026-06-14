@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🥩 乾貨快讀</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 17px;
+      background: #f9fafb;
+      color: #111827;
+      min-width: 320px;
+    }
+    header {
+      background: #fff;
+      border-bottom: 1px solid #e5e7eb;
+      padding: 18px 24px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .header-row {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    header h1 { font-size: 1.35em; font-weight: 700; color: #c2410c; }
+    header .meta { font-size: 0.85em; color: #6b7280; }
+    .back-link {
+      margin-left: auto;
+      font-size: 0.85em;
+      color: #1a6bc4;
+      text-decoration: none;
+      border: 1px solid #dbeafe;
+      background: #eff6ff;
+      padding: 5px 12px;
+      border-radius: 6px;
+      white-space: nowrap;
+    }
+    .back-link:hover { background: #dbeafe; }
+    .search {
+      width: 100%;
+      margin-top: 12px;
+      padding: 9px 13px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 0.92em;
+      outline: none;
+    }
+    .search:focus { border-color: #c2410c; }
+
+    main { max-width: 820px; margin: 0 auto; padding: 8px 20px 60px; }
+
+    .section-title {
+      font-size: 0.9em;
+      font-weight: 700;
+      color: #9a3412;
+      margin: 26px 0 10px;
+      padding-bottom: 5px;
+      border-bottom: 2px solid #fed7aa;
+    }
+    .catch-item {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 16px 18px;
+      margin-bottom: 12px;
+    }
+    .catch-item.hidden { display: none; }
+    .catch-title {
+      font-size: 1.12em;
+      font-weight: 700;
+      color: #111827;
+      line-height: 1.4;
+      margin-bottom: 4px;
+    }
+    .catch-sub {
+      font-size: 0.78em;
+      color: #9ca3af;
+      margin-bottom: 10px;
+    }
+    .catch-sub a { color: #c2410c; text-decoration: none; }
+    .catch-sub a:hover { text-decoration: underline; }
+    .catch-digest {
+      white-space: pre-wrap;
+      line-height: 1.75;
+      font-size: 0.96em;
+      color: #1f2937;
+      letter-spacing: 0.01em;
+    }
+    .catch-digest.empty {
+      color: #9ca3af;
+      font-style: italic;
+      font-size: 0.88em;
+    }
+    .ts-link {
+      color: #1a6bc4;
+      text-decoration: none;
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+    }
+    .ts-link:hover { text-decoration: underline; }
+    .no-results {
+      text-align: center;
+      padding: 40px;
+      color: #9ca3af;
+      display: none;
+    }
+    .no-results.visible { display: block; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="header-row">
+    <h1>🥩 乾貨快讀</h1>
+    <span class="meta">共 {{ total }} 篇 · 標題 + 30 秒 catch up（點時間戳跳到影片該段）</span>
+    <a class="back-link" href="/">← 回主控台</a>
+  </div>
+  <input type="text" class="search" id="search"
+         placeholder="搜尋標題 / 講者 / tag…" oninput="applyFilter()">
+</header>
+
+<main>
+{% for group in groups %}
+  <div class="section" data-category="{{ group.category }}">
+    <div class="section-title">{{ group.category }}（{{ group.entries | length }}）</div>
+    {% for item in group.entries %}
+    <div class="catch-item"
+         data-title="{{ item.filename }}"
+         data-speaker="{{ item.speaker }}"
+         data-tags="{{ item.tags | join(',') }}">
+      <div class="catch-title">{{ item.filename }}</div>
+      <div class="catch-sub">
+        {{ item.speaker }} · {{ item.duration }}
+        {% if item.source %} · <a href="{{ item.source }}" target="_blank" rel="noopener">▶ 原片</a>{% endif %}
+      </div>
+      {% if item.digest_html %}
+      <div class="catch-digest">{{ item.digest_html | safe }}</div>
+      {% else %}
+      <div class="catch-digest empty">（尚未生成乾貨——到主控台點該卡片的 🥩 即可生成）</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+{% endfor %}
+</main>
+
+<div class="no-results" id="no-results">沒有符合的摘要</div>
+
+<script>
+function applyFilter() {
+  const q = document.getElementById('search').value.toLowerCase().trim();
+  let visible = 0;
+  document.querySelectorAll('.catch-item').forEach(it => {
+    const hay = ((it.dataset.title || '') + ' ' + (it.dataset.speaker || '') + ' ' +
+                 (it.dataset.tags || '')).toLowerCase();
+    const show = !q || hay.includes(q);
+    it.classList.toggle('hidden', !show);
+    if (show) visible++;
+  });
+  document.querySelectorAll('.section').forEach(s => {
+    const any = [...s.querySelectorAll('.catch-item')].some(c => !c.classList.contains('hidden'));
+    s.style.display = any ? '' : 'none';
+  });
+  document.getElementById('no-results').classList.toggle('visible', visible === 0);
+}
+</script>
+</body>
+</html>

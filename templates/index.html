@@ -273,6 +273,27 @@
       align-items: center;
       gap: 4px;
     }
+    /* 快捷鍵預設收起，點「⋯」才展開（避免擠壓標題） */
+    .card-quick-actions {
+      display: none;
+      align-items: center;
+      gap: 4px;
+    }
+    .card.actions-open .card-quick-actions { display: flex; }
+    .menu-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 6px;
+      border-radius: 6px;
+      background: none;
+      border: none;
+      color: #9ca3af;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .menu-btn:hover { background: #f3f4f6; color: #6b7280; }
+    .card.actions-open .menu-btn { background: #dbeafe; color: #1a6bc4; }
     .mindmap-btn {
       display: inline-flex;
       align-items: center;
@@ -378,6 +399,32 @@
       transition: background 0.15s;
     }
     .intro-btn:hover { background: #d1fae5; }
+    .digest-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 6px;
+      border-radius: 6px;
+      background: none;
+      border: none;
+      color: #ea580c;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .digest-btn:hover { background: #ffedd5; }
+    .logic-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 6px;
+      border-radius: 6px;
+      background: none;
+      border: none;
+      color: #7c3aed;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .logic-btn:hover { background: #ede9fe; }
 
     .intro-modal-content {
       margin-top: 12px;
@@ -544,7 +591,7 @@
 
 <header>
   <h1>YT 演講摘要 Dashboard</h1>
-  <p class="meta">共 {{ total }} 篇 · 第一性原理摘要 + 互動心智圖</p>
+  <p class="meta">共 {{ total }} 篇 · 第一性原理摘要 + 互動心智圖 · <a href="/catchup" style="color:#c2410c;font-weight:700;text-decoration:none;">🥩 乾貨快讀模式 →</a></p>
 </header>
 
 <!-- Convert box -->
@@ -597,6 +644,28 @@
       <div class="card-header" onclick="toggleCard(this)">
         <span class="card-title-text">{{ item.filename }}</span>
         <div class="card-actions">
+          <div class="card-quick-actions">
+          <button class="logic-btn" data-filename="{{ item.filename }}"
+                  title="邏輯拆解（第一性原理推導鏈 × 多視角壓力測試）"
+                  onclick="event.stopPropagation(); openLogic(this.dataset.filename)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="1.8"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <line x1="6" y1="3" x2="6" y2="15"/>
+              <circle cx="18" cy="6" r="3"/>
+              <circle cx="6" cy="18" r="3"/>
+              <path d="M18 9a9 9 0 0 1-9 9"/>
+            </svg>
+          </button>
+          <button class="digest-btn" data-filename="{{ item.filename }}"
+                  title="乾貨摘要（30 秒 catch up · 帶時間戳 beats）"
+                  onclick="event.stopPropagation(); openDigest(this.dataset.filename)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="1.8"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+            </svg>
+          </button>
           <button class="intro-btn" data-filename="{{ item.filename }}"
                   title="導讀（線性帶入）"
                   onclick="event.stopPropagation(); openIntro(this.dataset.filename)">
@@ -636,6 +705,15 @@
             </svg>
           </a>
           {% endif %}
+          </div>
+          <button class="menu-btn" title="更多操作（快捷鍵）"
+                  onclick="event.stopPropagation(); toggleActions(this)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <circle cx="5" cy="12" r="1.7"/>
+              <circle cx="12" cy="12" r="1.7"/>
+              <circle cx="19" cy="12" r="1.7"/>
+            </svg>
+          </button>
           <span class="card-arrow">▸</span>
         </div>
       </div>
@@ -676,6 +754,30 @@
       <button class="modal-close" onclick="closeIntro()" title="關閉">×</button>
     </div>
     <div class="intro-modal-content" id="intro-content">載入中…</div>
+  </div>
+</div>
+
+<!-- Digest Modal（乾貨摘要）-->
+<div class="modal-overlay" id="digest-modal"
+     onclick="if(event.target===this) closeDigest()">
+  <div class="modal-panel">
+    <div class="modal-header">
+      <div class="modal-title" id="digest-title">🥩 乾貨摘要</div>
+      <button class="modal-close" onclick="closeDigest()" title="關閉">×</button>
+    </div>
+    <div class="intro-modal-content" id="digest-content">載入中…</div>
+  </div>
+</div>
+
+<!-- Logic Modal（邏輯拆解）-->
+<div class="modal-overlay" id="logic-modal"
+     onclick="if(event.target===this) closeLogic()">
+  <div class="modal-panel">
+    <div class="modal-header">
+      <div class="modal-title" id="logic-title">🧠 邏輯拆解</div>
+      <button class="modal-close" onclick="closeLogic()" title="關閉">×</button>
+    </div>
+    <div class="intro-modal-content" id="logic-content">載入中…</div>
   </div>
 </div>
 
@@ -729,6 +831,12 @@ function clearFilter() {
 function toggleCard(headerEl) {
   const card = headerEl.closest('.card');
   card.classList.toggle('expanded');
+}
+
+// 「⋯」展開/收起該卡片的快捷鍵列（與展開卡片本身互不影響）
+function toggleActions(btnEl) {
+  const card = btnEl.closest('.card');
+  card.classList.toggle('actions-open');
 }
 
 function applyFilter() {
@@ -1046,6 +1154,12 @@ document.addEventListener('keydown', (e) => {
   if (document.getElementById('intro-modal').classList.contains('visible')) {
     closeIntro();
   }
+  if (document.getElementById('digest-modal').classList.contains('visible')) {
+    closeDigest();
+  }
+  if (document.getElementById('logic-modal').classList.contains('visible')) {
+    closeLogic();
+  }
 });
 
 // ── Intro Modal（線性導讀）───────────────────────────────────────────────
@@ -1102,6 +1216,118 @@ function generateIntroNow(filename, contentEl) {
 
 function closeIntro() {
   document.getElementById('intro-modal').classList.remove('visible');
+}
+
+// ── Digest Modal（乾貨摘要）─────────────────────────────────────────────────
+function openDigest(filename) {
+  document.getElementById('digest-title').textContent = '🥩 乾貨摘要 — ' + filename;
+  const contentEl = document.getElementById('digest-content');
+  contentEl.textContent = '載入中…';
+  contentEl.classList.add('empty');
+  document.getElementById('digest-modal').classList.add('visible');
+
+  fetch('/digest/' + encodeURIComponent(filename))
+    .then(r => r.json().then(data => ({status: r.status, data})))
+    .then(({status, data}) => {
+      if (status >= 400) {
+        contentEl.textContent = '錯誤：' + (data.error || '未知');
+        contentEl.classList.add('empty');
+        return;
+      }
+      if (data.missing) {
+        generateDigestNow(filename, contentEl);
+        return;
+      }
+      contentEl.textContent = data.digest;
+      contentEl.classList.remove('empty');
+      contentEl.scrollTop = 0;
+    })
+    .catch(e => {
+      contentEl.textContent = '網路錯誤：' + e;
+      contentEl.classList.add('empty');
+    });
+}
+
+function generateDigestNow(filename, contentEl) {
+  contentEl.textContent = '此篇尚未產生乾貨摘要，正在讀逐字稿即時生成（約 30–45 秒，請勿關閉）…';
+  contentEl.classList.add('empty');
+
+  fetch('/digest/' + encodeURIComponent(filename) + '/generate', {method: 'POST'})
+    .then(r => r.json().then(d => ({status: r.status, d})))
+    .then(({status, d}) => {
+      if (status >= 400) {
+        contentEl.textContent = '產生失敗：' + (d.error || '未知');
+        contentEl.classList.add('empty');
+        return;
+      }
+      contentEl.textContent = d.digest;
+      contentEl.classList.remove('empty');
+      contentEl.scrollTop = 0;
+    })
+    .catch(e => {
+      contentEl.textContent = '網路錯誤：' + e;
+      contentEl.classList.add('empty');
+    });
+}
+
+function closeDigest() {
+  document.getElementById('digest-modal').classList.remove('visible');
+}
+
+// ── Logic Modal（邏輯拆解）───────────────────────────────────────────────────
+function openLogic(filename) {
+  document.getElementById('logic-title').textContent = '🧠 邏輯拆解 — ' + filename;
+  const contentEl = document.getElementById('logic-content');
+  contentEl.textContent = '載入中…';
+  contentEl.classList.add('empty');
+  document.getElementById('logic-modal').classList.add('visible');
+
+  fetch('/logic/' + encodeURIComponent(filename))
+    .then(r => r.json().then(data => ({status: r.status, data})))
+    .then(({status, data}) => {
+      if (status >= 400) {
+        contentEl.textContent = '錯誤：' + (data.error || '未知');
+        contentEl.classList.add('empty');
+        return;
+      }
+      if (data.missing) {
+        generateLogicNow(filename, contentEl);
+        return;
+      }
+      contentEl.textContent = data.logic;
+      contentEl.classList.remove('empty');
+      contentEl.scrollTop = 0;
+    })
+    .catch(e => {
+      contentEl.textContent = '網路錯誤：' + e;
+      contentEl.classList.add('empty');
+    });
+}
+
+function generateLogicNow(filename, contentEl) {
+  contentEl.textContent = '此篇尚未產生邏輯拆解，正在即時生成（約 15–30 秒，請勿關閉）…';
+  contentEl.classList.add('empty');
+
+  fetch('/logic/' + encodeURIComponent(filename) + '/generate', {method: 'POST'})
+    .then(r => r.json().then(d => ({status: r.status, d})))
+    .then(({status, d}) => {
+      if (status >= 400) {
+        contentEl.textContent = '產生失敗：' + (d.error || '未知');
+        contentEl.classList.add('empty');
+        return;
+      }
+      contentEl.textContent = d.logic;
+      contentEl.classList.remove('empty');
+      contentEl.scrollTop = 0;
+    })
+    .catch(e => {
+      contentEl.textContent = '網路錯誤：' + e;
+      contentEl.classList.add('empty');
+    });
+}
+
+function closeLogic() {
+  document.getElementById('logic-modal').classList.remove('visible');
 }
 
 // Re-render card container from JSON (post-chain reload)
@@ -1185,6 +1411,31 @@ function renderCards(summaries) {
             </svg>
           </button>`;
 
+      const logicBtnHtml = `<button class="logic-btn"
+              data-filename="${esc(item.filename)}"
+              title="邏輯拆解（第一性原理推導鏈 × 多視角壓力測試）"
+              onclick="event.stopPropagation(); openLogic(this.dataset.filename)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="1.8"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <line x1="6" y1="3" x2="6" y2="15"/>
+              <circle cx="18" cy="6" r="3"/>
+              <circle cx="6" cy="18" r="3"/>
+              <path d="M18 9a9 9 0 0 1-9 9"/>
+            </svg>
+          </button>`;
+
+      const digestBtnHtml = `<button class="digest-btn"
+              data-filename="${esc(item.filename)}"
+              title="乾貨摘要（30 秒 catch up · 帶時間戳 beats）"
+              onclick="event.stopPropagation(); openDigest(this.dataset.filename)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="1.8"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+            </svg>
+          </button>`;
+
       const introBtnHtml = `<button class="intro-btn"
               data-filename="${esc(item.filename)}"
               title="導讀（線性帶入）"
@@ -1213,9 +1464,21 @@ function renderCards(summaries) {
         <div class="card-header" onclick="toggleCard(this)">
           <span class="card-title-text">${esc(item.filename)}</span>
           <div class="card-actions">
-            ${introBtnHtml}
-            ${challengeBtnHtml}
-            ${mindmapBtnHtml}
+            <div class="card-quick-actions">
+              ${logicBtnHtml}
+              ${digestBtnHtml}
+              ${introBtnHtml}
+              ${challengeBtnHtml}
+              ${mindmapBtnHtml}
+            </div>
+            <button class="menu-btn" title="更多操作（快捷鍵）"
+                    onclick="event.stopPropagation(); toggleActions(this)">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <circle cx="5" cy="12" r="1.7"/>
+                <circle cx="12" cy="12" r="1.7"/>
+                <circle cx="19" cy="12" r="1.7"/>
+              </svg>
+            </button>
             <span class="card-arrow">▸</span>
           </div>
         </div>

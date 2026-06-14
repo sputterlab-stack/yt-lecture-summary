@@ -16,8 +16,11 @@
 │  ├─ /tasks     GET   全部 task 狀態                            │
 │  ├─ /status/<id>     單一 task                                │
 │  ├─ /intro/<file>    GET   抽某篇「## 導讀」段                  │
+│  ├─ /digest/<file>   GET   抽某篇「## 乾貨摘要」段              │
+│  ├─ /logic/<file>    GET   抽某篇「## 邏輯拆解」段              │
 │  ├─ /challenge POST {filename, answer}  Active Recall        │
 │  ├─ /api/summaries   全部摘要 metadata                         │
+│  ├─ /catchup         GET   乾貨快讀頁（標題+乾貨，時間戳連結）   │
 │  └─ /                Server-rendered dashboard                │
 └──────────────────────┬──────────────────────────────────────┘
                        │
@@ -150,6 +153,51 @@ skip_files:
 
 `filename` 不含副檔名。從 `.md` body 抽 `## 導讀.*\n` 標題行之後到下個 `## ...` 標題前的內容。
 
+### `GET /digest/<filename>`
+
+```json
+// Response (200)
+{
+  "filename": "...",
+  "digest": "30 秒 catch-up 純文字（💡一句定位 / ⏱跟著影片走（• [mm:ss] 從X→Y…）/ 📌so-what，含 \\n 換行）",
+  "missing": false  // true 表示該篇還沒產生乾貨摘要
+}
+
+// Errors
+400 { "error": "filename 不合法" }   // 含 / \ ..
+404 { "error": "找不到摘要：..." }
+```
+
+`filename` 不含副檔名。從 `.md` body 抽 `## 乾貨摘要.*\n` 標題行之後到下個 `## ...` 標題前的內容。
+
+### `POST /digest/<filename>/generate`
+
+**讀對應的 `outputs/transcripts/<filename>.srt` 逐字稿**（轉成 `[mm:ss] 文字` 餵 LLM 拿時間戳），產 catch-up 乾貨、插入 `.md`（在導讀／精選摘要／完整拆解最先者之前）並寫回，回 `{ "digest": "...", "filename": "..." }`。受 `_DEEPSEEK_SEM` 併發控制（與多工 task / `/challenge` 共用）。前端在 `GET /digest` 回 `missing:true` 時自動觸發；讀全文較慢（~30–60 秒）。
+
+```json
+// Errors
+400 { "error": "filename 不合法" / "找不到逐字稿 X.srt，無法產帶時間戳乾貨" / "逐字稿解析為空，無法產乾貨" }
+404 { "error": "找不到摘要：..." }
+500 { "error": "<exception>" / "LLM 回傳過短（N 字），疑似失敗" }
+```
+
+`/intro/<filename>/generate` 結構對稱（導讀版，讀 `## 完整拆解`）。
+
+### `GET /catchup`
+
+乾貨快讀頁（server-rendered，`templates/catchup.html`）：只列「標題 + 乾貨摘要」，無心智圖/展開/學習工具。每篇用 `_extract_section(md, _DIGEST_HEADING_RE)` 抽乾貨，`_digest_to_html()` 把 `[mm:ss]` 換成 `https://www.youtube.com/watch?v=<id>&t=<秒>s` 連結（`_youtube_id()` 從 frontmatter `source` 抽 11 碼 id）。前端純標題/講者/tag 文字搜尋。
+
+### `GET /logic/<filename>` ＋ `POST /logic/<filename>/generate`
+
+與 `/digest` 完全同構，差別在段落標題（`## 邏輯拆解`）、prompt（`LOGIC_*`）與插入位置。
+
+```json
+// GET 200
+{ "filename": "...", "logic": "純文字邏輯骨架（四段：拆到地基/推導鏈/多視角壓力測試/崩潰條件，含 \\n 換行、• bullet、→ 推導、🟢🔴⚖️ 視角）", "missing": false }
+```
+
+`generate` 即時產出後插入 `.md`（在 `## 完整拆解` 之前，作為原 8 段的深度伴隨版）並寫回。受 `_DEEPSEEK_SEM` 控併發。前端在 `missing:true` 時自動觸發；產出耗時較長（~30–45 秒）。錯誤碼同 `/digest/generate`（過短門檻 150 字）。
+
 ### `POST /challenge`
 
 ```json
@@ -230,7 +278,9 @@ done (step 5)
 |---|---|---|
 | `SYSTEM_PROMPT` + `USER_PROMPT_TEMPLATE` | 主摘要（含 thesis / weekly_action / category / subcategory） | `summarizer.first_principles_summary` |
 | `MINDMAP_SYSTEM_PROMPT` + `MINDMAP_USER_PROMPT_TEMPLATE` | Mermaid 心智圖 | `gen_mindmap.py` |
-| `INTRO_SYSTEM` + `INTRO_USER_TEMPLATE` | 線性導讀 | `enrich_intro.py` |
+| `INTRO_SYSTEM` + `INTRO_USER_TEMPLATE` | 線性導讀 | `enrich_intro.py`、`web_server /intro/<f>/generate` |
+| `DIGEST_SYSTEM` + `DIGEST_USER_TEMPLATE` | 乾貨摘要（30 秒 catch-up，帶時間戳 beats；輸入為 `.srt` 逐字稿，placeholder `{transcript}`） | `enrich_digest.py`、`web_server /digest/<f>/generate` |
+| `LOGIC_SYSTEM` + `LOGIC_USER_TEMPLATE` | 邏輯拆解（第一性原理推導鏈 × 多視角） | `enrich_logic.py`、`web_server /logic/<f>/generate` |
 | `RECALL_CHALLENGE_SYSTEM` + `RECALL_CHALLENGE_USER_TEMPLATE` | Active Recall 評估 | `web_server /challenge` |
 
 `USER_PROMPT_TEMPLATE` 在 module load 時用 `_RAW_USER_PROMPT.replace("{TAXONOMY_TEXT}", TAXONOMY_TEXT)` 動態注入 taxonomy；其餘 `{yt_title}` `{transcript}` 等仍由 `summarizer` `.format()` 處理。
@@ -242,8 +292,10 @@ done (step 5)
 | `recategorize.py` | 改 taxonomy 後重判 | frontmatter `category` + `subcategory`，不動 summary / tags |
 | `enrich_summary.py` | 加 thesis/action 欄後補舊資料 | frontmatter `thesis` + `weekly_action`，不動 summary / tags |
 | `enrich_intro.py` | 加導讀章節後補舊資料 | body 插入「## 導讀（線性帶入）」段（在 `## 精選摘要` 前）；不動 frontmatter 與其他段；預設跳過已有導讀者，`--force` 強制重產 |
+| `enrich_digest.py` | 加/改版乾貨段 | **讀 `outputs/transcripts/<stem>.srt`**（`srt_to_timestamped_text()` → `[mm:ss] 文字`）產帶時間戳 catch-up，插入「## 乾貨摘要」段（在導讀／精選摘要／完整拆解最先者之前，即最上方）；不動 frontmatter 與其他段；預設跳過已有者，改版用 `--apply --force` 全量重產 |
+| `enrich_logic.py` | 加邏輯拆解章節後補舊資料 | body 插入「## 邏輯拆解」段（在 `## 完整拆解` 之前）；不動 frontmatter 與其他段；預設跳過已有者，`--force` 強制重產；複用 `enrich_intro.extract_breakdown`；過短門檻 150 字 |
 
-兩者共用 `recategorize.split_frontmatter` / `extract_summary_top` / `update_frontmatter_keys`。`update_frontmatter_keys` 精準 in-place 替換指定 key（保留其他行原樣含 datetime / list / 註解）。
+各工具共用 `recategorize.split_frontmatter` / `extract_summary_top` / `update_frontmatter_keys`。`update_frontmatter_keys` 精準 in-place 替換指定 key（保留其他行原樣含 datetime / list / 註解）。
 
 ## 10. 已知小債
 

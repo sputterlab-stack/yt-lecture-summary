@@ -10,6 +10,8 @@
 - 🗺️ 自動產 mermaid 心智圖（`.mmd`）+ Markmap 互動式 HTML
 - 🌐 Flask web dashboard：**多 URL 一次貼批次**轉換（Hybrid 並行：Whisper 排隊、下載+DeepSeek 並行）+ 多 task 進度卡 + tag 搜尋過濾
 - 🎯 每篇自動濃縮 **核心主張一句話 + 這週能做的一個動作**（壓縮入口頻寬、觸發應用）
+- 🥩 **「乾貨摘要」= 30 秒 catch up**：讀 `.srt` 逐字稿產出「跟著影片時間軸的故事線」（💡一句定位 → ⏱帶時間戳 beats（每點「從 X→Y」轉變框架）→ 📌so-what）。**獨立「🥩 乾貨快讀頁」**（`/catchup`）只顯示標題＋乾貨、點時間戳直接跳到影片該段——只想快速抓重點、不想學整套時看這頁
+- 🧠 **「邏輯拆解」按鈕**：第一性原理 × 多視角——把主張剝到「不可再質疑的地基」→ 一步步推回結論（每步標 [事實]/[推論]/[假設]/[價值判斷]）→ 關鍵轉折用 🟢最強支持/🔴最大破口/⚖️第一性裁決(附成立度分數) 壓力測試 → 崩潰條件。想看懂底層邏輯、自己重推一遍就點這個
 - 📖 **「導讀」按鈕**：800-2000 字線性敘事帶入（先有 narrative scaffolding 再去看心智圖網路）
 - 📝 **「考自己」按鈕**（Active Recall）：合上摘要、用自己的話講，LLM 對齊原內容指出你漏掉/抓錯的點
 - 🗂️ 兩層 taxonomy 治理（`category_taxonomy.yaml` 主類+子類 + alias 折疊舊類別）
@@ -102,8 +104,12 @@ code --install-extension tomoyukim.vscode-mermaid-editor
 - **上方 textarea（多行 URL）**：一行一個，可貼一批 → 點「轉換」→ 立刻可繼續貼下一批；下方 task 卡片網格累積顯示每筆 5 步進度（藍=跑、黃=等批次、綠=完成、紅=失敗）
 - **Hybrid 並行**：Whisper 階段全域 lock 串行（防 GPU OOM），下載 + DeepSeek 階段並行；上限以 `PARALLEL_LIMIT` env 控制（預設 3）
 - **下方卡片網格**：所有摘要按主類分群；卡片正面顯示**核心主張**（thesis）+ **💡 這週能做的動作**（黃色 box），點展開看 elevator pitch / 講者 / tags
-- **「📖 導讀」按鈕**（卡片右上書本 icon）：跳 modal 顯示 800-2000 字線性敘事，建議先看完導讀再看心智圖（網狀結構）
-- **「考自己」按鈕**（卡片右上問號 icon）：跳 modal、合上摘要寫核心論點、LLM 對齊評估「你抓對的 / 漏掉的 / 教練引導」（Esc 關閉）
+- **🥩 乾貨快讀模式**（主控台標題列的連結，或直接開 `/catchup`）：獨立頁面，只列「標題 + 乾貨摘要」，無心智圖/展開/學習工具；每個 `[mm:ss]` 時間戳是連結，點了直接跳到 YouTube 影片該段。頂部可搜尋標題/講者/tag
+- **快捷鍵收在「⋯」選單裡**：為避免擠壓標題，卡片右上預設只顯示「⋯」+ 展開箭頭，標題整行清楚顯示；點「⋯」才展開下列那排功能按鈕（🧠🥩📖？🕸），再點一次收起
+- **「🧠 邏輯拆解」按鈕**（⋯ 選單內，分支 icon，最左）：跳 modal 顯示第一性原理推導鏈 × 多視角壓力測試（地基→推導鏈→🟢🔴⚖️攻防附成立度→崩潰條件）；沒產過的篇章點下去即時生成（約 30–45 秒）並快取進 `.md`。想真的看懂底層邏輯、看出論點哪裡硬哪裡軟時看這個
+- **「🥩 乾貨摘要」按鈕**（⋯ 選單內，閃電 icon）：跳 modal 顯示 30 秒 catch-up（💡定位 / ⏱帶時間戳 beats / 📌so-what）；沒產過的篇章點下去讀 `.srt` 即時生成（約 30–60 秒）並快取進 `.md`。想快速抓影片重點時看這個（或用上面的乾貨快讀頁）
+- **「📖 導讀」按鈕**（⋯ 選單內，書本 icon）：跳 modal 顯示 800-2000 字線性敘事，建議先看完導讀再看心智圖（網狀結構）
+- **「考自己」按鈕**（⋯ 選單內，問號 icon）：跳 modal、合上摘要寫核心論點、LLM 對齊評估「你抓對的 / 漏掉的 / 教練引導」（Esc 關閉）
 - **即時過濾**：搜尋框（標題 / 講者 / tag）+ 多選 tag chips（OR 邏輯）+ 清除按鈕
 
 視窗保持開啟即 server 運作，關掉視窗即停止。
@@ -186,6 +192,8 @@ code "outputs/summaries/心智圖總覽.md"
 | `recategorize.py` | 一次性批次：用 taxonomy 重判既有摘要的 category + subcategory | 改 taxonomy 後 |
 | `enrich_summary.py` | 一次性批次：補既有摘要的 thesis + weekly_action | 加新欄位後 |
 | `enrich_intro.py` | 一次性批次：補既有摘要的「## 導讀（線性帶入）」段（800-2000 字散文） | 加新欄位後 |
+| `enrich_digest.py` | 一次性批次：補/更新「## 乾貨摘要」段（讀 `.srt` 產帶時間戳 catch-up） | 加新欄位後 / 改版時 |
+| `enrich_logic.py` | 一次性批次：補既有摘要的「## 邏輯拆解」段（第一性原理推導鏈 × 多視角） | 加新欄位後 |
 | `category_taxonomy.yaml` | 主類+子類二層樹 + alias 折疊 + skip_files 黑名單 | 想調分類時改 |
 | `prompts.py` | 集中所有 LLM prompts（摘要、心智圖、考自己） | 想調 prompt 時改 |
 | `一鍵啟動.bat` / `run-cli.sh` | 命令列 chain（不用 web UI） | fallback |
@@ -208,6 +216,18 @@ python enrich_summary.py --apply  # 寫入
 python enrich_intro.py            # dry-run（預設跳過已有導讀）
 python enrich_intro.py --apply    # 寫入
 python enrich_intro.py --apply --force  # 強制重產所有篇
+
+# 補/更新乾貨摘要段（讀 .srt → 30 秒 catch-up，帶時間戳）
+python enrich_digest.py           # dry-run（預設跳過已有乾貨）
+python enrich_digest.py --apply   # 寫入（只補沒有的）
+python enrich_digest.py --file 標題.md   # 單篇 dry-run 預覽（印全文）
+python enrich_digest.py --apply --force  # 強制重產所有篇（改版後用這個）
+
+# 補邏輯拆解段（第一性原理推導鏈 × 多視角）— 為所有舊摘要預先產好
+python enrich_logic.py            # dry-run（預設跳過已有）
+python enrich_logic.py --apply    # 寫入
+python enrich_logic.py --file 標題.md    # 單篇 dry-run 預覽（會印全文）
+python enrich_logic.py --apply --force   # 強制重產所有篇
 
 # 心智圖
 python gen_mindmap.py             # 只產缺的
@@ -269,11 +289,13 @@ PARALLEL_LIMIT=2 DEEPSEEK_PARALLEL=2 python web_server.py
 
 | 通道 | 形式 | 角色 |
 |---|---|---|
+| 🥩 **乾貨摘要 / 快讀頁** | 帶時間戳 catch-up（💡定位/⏱beats/📌so-what） | 30 秒抓骨幹＋跳影片該段（決定值不值得深入；`/catchup` 純讀頁） |
+| 🧠 **邏輯拆解** | 第一性原理推導鏈 × 多視角壓力測試 | 看懂底層邏輯、自己重推一遍、看出論點哪裡硬哪裡軟 |
 | 📖 **導讀** | 800-2000 字線性敘事 | 入口前的 narrative scaffolding（先建立 mental model） |
 | 🗺️ **心智圖** | 網狀結構（mermaid mindmap） | 概念之間的連結（建立思維網路） |
 | 📝 **考自己** | 合上摘要寫 / LLM 對齊 | 看完後 active recall（把辨識升級為回憶） |
 
-建議使用順序：**讀 thesis → 點 📖 導讀讀完 → 看心智圖 → 點考自己驗證自己抓到什麼漏掉什麼**。
+建議使用順序：**點 🥩 乾貨摘要 30 秒掃骨幹 → 值得深入點 🧠 邏輯拆解 看懂底層邏輯與攻防 → 想要敘事感再點 📖 導讀 → 看心智圖 → 點考自己驗證自己抓到什麼漏掉什麼**。
 
 ## 九、Active Recall（考自己）— 詳細
 
