@@ -18,7 +18,10 @@
 │  ├─ /intro/<file>    GET   抽某篇「## 導讀」段                  │
 │  ├─ /digest/<file>   GET   抽某篇「## 乾貨摘要」段              │
 │  ├─ /logic/<file>    GET   抽某篇「## 邏輯拆解」段              │
+│  ├─ /synthesis/<f>/generate POST 產「## 融會貫通」段          │
 │  ├─ /challenge POST {filename, answer}  Active Recall        │
+│  ├─ /delete/<file>   POST  移到 outputs/_trash（可復原）        │
+│  ├─ /rename/<file>   POST {title}  寫 frontmatter display_title │
 │  ├─ /api/summaries   全部摘要 metadata                         │
 │  ├─ /catchup         GET   乾貨快讀頁（標題+乾貨，時間戳連結）   │
 │  └─ /                Server-rendered dashboard                │
@@ -185,7 +188,7 @@ skip_files:
 
 ### `GET /catchup`
 
-乾貨快讀頁（server-rendered，`templates/catchup.html`）：只列「標題 + 乾貨摘要」，無心智圖/展開/學習工具。每篇用 `_extract_section(md, _DIGEST_HEADING_RE)` 抽乾貨，`_digest_to_html()` 把 `[mm:ss]` 換成 `https://www.youtube.com/watch?v=<id>&t=<秒>s` 連結（`_youtube_id()` 從 frontmatter `source` 抽 11 碼 id）。前端純標題/講者/tag 文字搜尋。
+乾貨快讀頁（server-rendered，`templates/catchup.html`）：每篇列「標題 + 🧩 融會貫通（整理後一段式 elevator pitch）+ 乾貨摘要」，無心智圖/展開/學習工具。融會貫通用 `_extract_section(md, _SYNTHESIS_HEADING_RE)` 抽（純文字、`html.escape`，無時間戳連結）；乾貨用 `_extract_section(md, _DIGEST_HEADING_RE)`，`_digest_to_html()` 把 `[mm:ss]` 換成 `https://www.youtube.com/watch?v=<id>&t=<秒>s` 連結（`_youtube_id()` 從 frontmatter `source` 抽 11 碼 id）。兩者皆「缺則顯示 ▶ 生成 按鈕」即時補（`genSynthesis` / `genDigest` → POST generate → reload）。前端純標題/講者/tag 文字搜尋。
 
 ### `GET /logic/<filename>` ＋ `POST /logic/<filename>/generate`
 
@@ -198,7 +201,9 @@ skip_files:
 
 `generate` 即時產出後插入 `.md`（在 `## 完整拆解` 之前，作為原 8 段的深度伴隨版）並寫回。受 `_DEEPSEEK_SEM` 控併發。前端在 `missing:true` 時自動觸發；產出耗時較長（~30–45 秒）。錯誤碼同 `/digest/generate`（過短門檻 150 字）。
 
-### `POST /challenge`
+### `POST /synthesis/<filename>/generate`
+
+讀 `## 完整拆解`（`extract_breakdown`）餵 `SYNTHESIS_*` prompt，產一段式「融會貫通」（整理後的 elevator pitch，150–250 字白話散文），用 `insert_synthesis()` 插在 `## 精選摘要` 之前並寫回，回 `{ "synthesis": "...", "filename": "..." }`。受 `_DEEPSEEK_SEM` 控併發；過短門檻 80 字。catchup 頁在缺此段時顯示「▶ 生成融會貫通」按鈕觸發。批次補產：`python enrich_synthesis.py --apply`（dry-run 預設、`--force` 重產、`--file` 單篇），與 `enrich_logic.py` 同構。
 
 ```json
 // Request
@@ -221,7 +226,15 @@ skip_files:
 
 ### `GET /api/summaries`
 
-回傳全部 `collect_summaries()` 結果（列表，每筆含 frontmatter 全欄 + `elevator_pitch` + `markmap_url`）。
+回傳全部 `collect_summaries()` 結果（列表，每筆含 frontmatter 全欄 + `display_title` + `elevator_pitch` + `markmap_url`）。`display_title` = frontmatter 的 `display_title`，無則回退 `md.stem`（檔名）。
+
+### `POST /delete/<filename>`
+
+把該篇的 `.md` / `.mmd`（summaries）、`.srt`（transcripts）、`.html`（markmap）**移到 `outputs/_trash/`** 對應子夾（可手動復原，非硬刪）。回 `{ "ok": true, "moved": [...] }`；`.md` 不存在回 404。安全：拒含 `/`、`\`、`..` 的 filename。
+
+### `POST /rename/<filename>` body `{title}`
+
+把 `title` 以 `update_frontmatter_keys()` 寫入該篇 frontmatter 的 `display_title`（值用 `json.dumps` 包成合法 YAML 雙引號字串，避免冒號/引號破壞 YAML），**不改檔名**。回 `{ "ok": true, "display_title": title }`；空標題 400、檔案不存在 404。前端僅改顯示與搜尋用標題，`yt_title`（原始 YouTube 標題）保留不動。
 
 ## 5. Per-task 5 步狀態機
 
@@ -281,6 +294,7 @@ done (step 5)
 | `INTRO_SYSTEM` + `INTRO_USER_TEMPLATE` | 線性導讀 | `enrich_intro.py`、`web_server /intro/<f>/generate` |
 | `DIGEST_SYSTEM` + `DIGEST_USER_TEMPLATE` | 乾貨摘要（30 秒 catch-up，帶時間戳 beats；輸入為 `.srt` 逐字稿，placeholder `{transcript}`） | `enrich_digest.py`、`web_server /digest/<f>/generate` |
 | `LOGIC_SYSTEM` + `LOGIC_USER_TEMPLATE` | 邏輯拆解（第一性原理推導鏈 × 多視角） | `enrich_logic.py`、`web_server /logic/<f>/generate` |
+| `SYNTHESIS_SYSTEM` + `SYNTHESIS_USER_TEMPLATE` | 融會貫通（整理後的一段式 elevator pitch；輸入為 `## 完整拆解`） | `enrich_synthesis.py`、`web_server /synthesis/<f>/generate` |
 | `RECALL_CHALLENGE_SYSTEM` + `RECALL_CHALLENGE_USER_TEMPLATE` | Active Recall 評估 | `web_server /challenge` |
 
 `USER_PROMPT_TEMPLATE` 在 module load 時用 `_RAW_USER_PROMPT.replace("{TAXONOMY_TEXT}", TAXONOMY_TEXT)` 動態注入 taxonomy；其餘 `{yt_title}` `{transcript}` 等仍由 `summarizer` `.format()` 處理。

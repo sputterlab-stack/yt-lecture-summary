@@ -173,22 +173,62 @@
 
     /* ── Filter bar ── */
     .filter-bar {
-      margin: 20px 24px 12px;
+      margin: 8px 24px 12px;
       display: flex;
       flex-wrap: wrap;
       gap: 10px;
       align-items: flex-start;
     }
-    .filter-search {
-      padding: 8px 12px;
-      border: 1px solid #d1d5db;
-      border-radius: 6px;
-      font-size: 0.88em;
-      min-width: 200px;
-      flex: 1;
-      outline: none;
+    /* ── Prominent search panel ── */
+    .search-panel { margin: 20px 24px 8px; }
+    .search-box {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: #fff;
+      border: 2px solid #d1d5db;
+      border-radius: 10px;
+      padding: 4px 14px;
     }
-    .filter-search:focus { border-color: #1a6bc4; }
+    .search-box:focus-within {
+      border-color: #1a6bc4;
+      box-shadow: 0 0 0 3px rgba(26,107,196,0.12);
+    }
+    .search-icon { font-size: 1.25em; color: #6b7280; line-height: 1; }
+    .filter-search-big {
+      flex: 1;
+      border: none;
+      outline: none;
+      background: transparent;
+      font-size: 1.05em;
+      padding: 11px 2px;
+      color: #111827;
+      min-width: 120px;
+    }
+    .search-hint {
+      font-size: 0.82em;
+      color: #6b7280;
+      margin: 8px 4px 0;
+      line-height: 1.7;
+    }
+    .search-hint b { color: #1a6bc4; font-weight: 600; }
+    .btn-show-hidden {
+      padding: 6px 12px;
+      font-size: 0.82em;
+      border: 1px solid #d1d5db;
+      border-radius: 20px;
+      background: #fff;
+      color: #6b7280;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .btn-show-hidden:hover { background: #f3f4f6; }
+    .btn-show-hidden.active {
+      background: #fef3c7;
+      border-color: #f59e0b;
+      color: #92400e;
+      font-weight: 600;
+    }
     .tag-filter-wrap {
       display: flex;
       flex-wrap: wrap;
@@ -426,6 +466,61 @@
     }
     .logic-btn:hover { background: #ede9fe; }
 
+    /* 卡片管理按鈕：改標題 / 隱藏 / 刪除 */
+    .rename-btn, .hide-btn, .delete-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 6px;
+      border-radius: 6px;
+      background: none;
+      border: none;
+      color: #9ca3af;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .rename-btn:hover { background: #eef2ff; color: #4f46e5; }
+    .hide-btn:hover { background: #f3f4f6; color: #4b5563; }
+    .delete-btn:hover { background: #fef2f2; color: #dc2626; }
+    .card.archived .hide-btn { color: #f59e0b; }
+
+    /* 已隱藏卡片：是否顯示由 applyFilter 控制（.hidden）；這裡只給「有顯示時」的淡化虛線樣式 */
+    .card.archived {
+      opacity: 0.6;
+      border-style: dashed;
+      background: #fafafa;
+    }
+    .card-hidden-badge {
+      display: none;
+      font-size: 0.72em;
+      font-weight: 600;
+      color: #b45309;
+      background: #fef3c7;
+      border-radius: 10px;
+      padding: 1px 8px;
+      margin-left: 6px;
+      white-space: nowrap;
+    }
+    body.show-hidden .card.archived .card-hidden-badge { display: inline-block; }
+
+    /* 標題行內編輯 */
+    .title-edit-wrap {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .title-edit-input {
+      flex: 1;
+      font-size: 1.0em;
+      font-family: inherit;
+      padding: 5px 8px;
+      border: 1px solid #1a6bc4;
+      border-radius: 5px;
+      outline: none;
+      color: #111827;
+    }
+
     .intro-modal-content {
       margin-top: 12px;
       padding: 18px 20px;
@@ -617,11 +712,24 @@
   </div>
 </div>
 
-<!-- Filter bar -->
+<!-- Search panel (prominent) -->
+<div class="search-panel">
+  <div class="search-box">
+    <span class="search-icon">🔍</span>
+    <input type="text" class="filter-search-big" id="filter-search"
+           placeholder="搜尋演講…輸入標題、講者或標籤的關鍵字即時篩選"
+           autocomplete="off"
+           oninput="applyFilter()" />
+    <button class="btn-show-hidden" id="btn-show-hidden"
+            onclick="toggleShowHidden()" style="display:none;">顯示已隱藏 (0)</button>
+  </div>
+  <div class="search-hint">
+    💡 即時篩選：關鍵字會比對<b>標題</b>、<b>講者</b>、<b>標籤</b>；點下方標籤可<b>疊加</b>篩選。每張卡片右側「⋯」可<b>改標題</b>、<b>隱藏</b>或<b>刪除</b>。
+  </div>
+</div>
+
+<!-- Filter bar (tag chips) -->
 <div class="filter-bar">
-  <input type="text" class="filter-search" id="filter-search"
-         placeholder="搜尋標題 / 講者 / tag…"
-         oninput="applyFilter()" />
   <div class="tag-filter-wrap" id="tag-chips">
     {% for tag in all_tags %}
     <span class="tag-chip" data-tag="{{ tag }}" onclick="toggleTag(this)">{{ tag }}</span>
@@ -638,11 +746,13 @@
   <div class="card-grid">
     {% for item in group.entries %}
     <div class="card"
-         data-title="{{ item.filename }}"
+         data-filename="{{ item.filename }}"
+         data-title="{{ item.display_title }}"
          data-speaker="{{ item.speaker }}"
          data-tags="{{ item.tags | join(',') }}">
       <div class="card-header" onclick="toggleCard(this)">
-        <span class="card-title-text">{{ item.filename }}</span>
+        <span class="card-title-text">{{ item.display_title }}</span>
+        <span class="card-hidden-badge">已隱藏</span>
         <div class="card-actions">
           <div class="card-quick-actions">
           <button class="logic-btn" data-filename="{{ item.filename }}"
@@ -705,6 +815,40 @@
             </svg>
           </a>
           {% endif %}
+          <button class="rename-btn" data-filename="{{ item.filename }}"
+                  title="改標題（不改檔名）"
+                  onclick="event.stopPropagation(); startRename(this)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="1.8"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 20h9"/>
+              <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>
+            </svg>
+          </button>
+          <button class="hide-btn" data-filename="{{ item.filename }}"
+                  title="隱藏 / 取消隱藏這篇"
+                  onclick="event.stopPropagation(); toggleHideCard(this)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="1.8"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+              <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
+              <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/>
+              <line x1="1" y1="1" x2="23" y2="23"/>
+            </svg>
+          </button>
+          <button class="delete-btn" data-filename="{{ item.filename }}"
+                  title="刪除（移到回收區，可復原）"
+                  onclick="event.stopPropagation(); deleteCard(this)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="1.8"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+              <line x1="10" y1="11" x2="10" y2="17"/>
+              <line x1="14" y1="11" x2="14" y2="17"/>
+            </svg>
+          </button>
           </div>
           <button class="menu-btn" title="更多操作（快捷鍵）"
                   onclick="event.stopPropagation(); toggleActions(this)">
@@ -839,9 +983,170 @@ function toggleActions(btnEl) {
   card.classList.toggle('actions-open');
 }
 
+// ── 隱藏 / 取消隱藏（localStorage，純前端，不動檔案）──────────────────────
+const HIDDEN_KEY = 'yt_hidden_v1';
+
+function getHiddenSet() {
+  try { return new Set(JSON.parse(localStorage.getItem(HIDDEN_KEY) || '[]')); }
+  catch (e) { return new Set(); }
+}
+
+function saveHiddenSet(set) {
+  localStorage.setItem(HIDDEN_KEY, JSON.stringify([...set]));
+}
+
+// 依 localStorage 把對應卡片標上/移除 .archived，再更新計數與篩選
+function applyHiddenState() {
+  const set = getHiddenSet();
+  document.querySelectorAll('.card').forEach(card => {
+    card.classList.toggle('archived', set.has(card.dataset.filename || ''));
+  });
+  updateHiddenToggle();
+  applyFilter();
+}
+
+function toggleHideCard(btnEl) {
+  const filename = btnEl.dataset.filename;
+  if (!filename) return;
+  const set = getHiddenSet();
+  if (set.has(filename)) set.delete(filename); else set.add(filename);
+  saveHiddenSet(set);
+  applyHiddenState();
+}
+
+function updateHiddenToggle() {
+  const btn = document.getElementById('btn-show-hidden');
+  if (!btn) return;
+  const n = document.querySelectorAll('.card.archived').length;
+  const on = document.body.classList.contains('show-hidden');
+  btn.textContent = (on ? '隱藏已隱藏項 ' : '顯示已隱藏 ') + '(' + n + ')';
+  btn.style.display = n > 0 ? '' : 'none';
+}
+
+function toggleShowHidden() {
+  const on = document.body.classList.toggle('show-hidden');
+  document.getElementById('btn-show-hidden').classList.toggle('active', on);
+  updateHiddenToggle();
+  applyFilter();
+}
+
+// ── 刪除（移到回收區，可復原）──────────────────────────────────────────────
+function deleteCard(btnEl) {
+  const filename = btnEl.dataset.filename;
+  if (!filename) return;
+  const card = btnEl.closest('.card');
+  const shown = card.querySelector('.card-title-text');
+  const label = (shown && shown.textContent) || filename;
+  if (!confirm('確定刪除「' + label + '」？\n檔案會移到 outputs/_trash/，可手動復原。')) return;
+
+  fetch('/delete/' + encodeURIComponent(filename), {method: 'POST'})
+    .then(r => r.json().then(d => ({status: r.status, d})))
+    .then(({status, d}) => {
+      if (status >= 400) { alert('刪除失敗：' + (d.error || '未知')); return; }
+      const set = getHiddenSet();
+      if (set.delete(filename)) saveHiddenSet(set);
+      card.remove();
+      recountAndCleanup();
+      updateHiddenToggle();
+      applyFilter();
+    })
+    .catch(e => alert('網路錯誤：' + e));
+}
+
+// 刪除後重算總篇數與各分類數量，並移除空分類
+function recountAndCleanup() {
+  const total = document.querySelectorAll('.card').length;
+  const meta = document.querySelector('header p.meta');
+  if (meta) meta.innerHTML = meta.innerHTML.replace(/共\s*\d+\s*篇/, '共 ' + total + ' 篇');
+  document.querySelectorAll('.section').forEach(section => {
+    const cat = section.dataset.category || '';
+    const n = section.querySelectorAll('.card').length;
+    const titleEl = section.querySelector('.section-title');
+    if (n === 0) { section.remove(); return; }
+    if (titleEl) titleEl.textContent = cat + '（' + n + '）';
+  });
+}
+
+// ── 改顯示標題（行內編輯，寫入 frontmatter，不改檔名）───────────────────────
+function startRename(btnEl) {
+  const card = btnEl.closest('.card');
+  const filename = btnEl.dataset.filename;
+  if (!card || !filename) return;
+  if (card.querySelector('.title-edit-wrap')) return;  // 已在編輯
+  if (!card.classList.contains('expanded')) {
+    // 編輯時別讓點 header 收合卡片造成困惑；保持原狀即可
+  }
+  const header = card.querySelector('.card-header');
+  const titleSpan = card.querySelector('.card-title-text');
+  const current = titleSpan.textContent;
+
+  const wrap = document.createElement('span');
+  wrap.className = 'title-edit-wrap';
+  wrap.onclick = (e) => e.stopPropagation();
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'title-edit-input';
+  input.value = current;
+
+  const save = document.createElement('button');
+  save.className = 'menu-btn';
+  save.title = '儲存';
+  save.textContent = '✓';
+  save.onclick = () => commitRename(card, filename, input.value, current);
+
+  const cancel = document.createElement('button');
+  cancel.className = 'menu-btn';
+  cancel.title = '取消';
+  cancel.textContent = '✕';
+  cancel.onclick = () => endRename(card);
+
+  input.onkeydown = (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); commitRename(card, filename, input.value, current); }
+    if (e.key === 'Escape') { e.preventDefault(); endRename(card); }
+  };
+
+  wrap.appendChild(input);
+  wrap.appendChild(save);
+  wrap.appendChild(cancel);
+  titleSpan.style.display = 'none';
+  header.insertBefore(wrap, titleSpan.nextSibling);
+  input.focus();
+  input.select();
+}
+
+function endRename(card) {
+  const wrap = card.querySelector('.title-edit-wrap');
+  if (wrap) wrap.remove();
+  const titleSpan = card.querySelector('.card-title-text');
+  if (titleSpan) titleSpan.style.display = '';
+}
+
+function commitRename(card, filename, newTitle, oldTitle) {
+  newTitle = (newTitle || '').trim();
+  if (!newTitle || newTitle === oldTitle) { endRename(card); return; }
+
+  fetch('/rename/' + encodeURIComponent(filename), {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({title: newTitle}),
+  })
+    .then(r => r.json().then(d => ({status: r.status, d})))
+    .then(({status, d}) => {
+      if (status >= 400) { alert('改標題失敗：' + (d.error || '未知')); return; }
+      const titleSpan = card.querySelector('.card-title-text');
+      titleSpan.textContent = d.display_title;
+      card.dataset.title = d.display_title;
+      endRename(card);
+      applyFilter();
+    })
+    .catch(e => alert('網路錯誤：' + e));
+}
+
 function applyFilter() {
   const q = document.getElementById('filter-search').value.toLowerCase().trim();
   const cards = document.querySelectorAll('.card');
+  const showHidden = document.body.classList.contains('show-hidden');
   let visibleCount = 0;
 
   cards.forEach(card => {
@@ -855,7 +1160,10 @@ function applyFilter() {
     const matchTags = activeTags.size === 0
       || [...activeTags].some(t => tags.includes(t.toLowerCase()));
 
-    if (matchText && matchTags) {
+    // 已隱藏的卡片只有在「顯示已隱藏」開啟時才參與顯示
+    const passArchive = !card.classList.contains('archived') || showHidden;
+
+    if (matchText && matchTags && passArchive) {
       card.classList.remove('hidden');
       visibleCount++;
     } else {
@@ -1042,6 +1350,7 @@ function reloadCards() {
 
 // 啟動時若 server 已有未完成 task（refresh 時），自動接手 polling
 window.addEventListener('load', () => {
+  applyHiddenState();  // 還原使用者上次隱藏的演講
   fetch('/tasks').then(r => r.json()).then(data => {
     const inflight = (data.tasks || []).filter(t =>
       t.status !== 'done' && t.status !== 'error'
@@ -1375,7 +1684,8 @@ function renderCards(summaries) {
       tags.forEach(t => allTagsSet.add(t));
       const card = document.createElement('div');
       card.className = 'card';
-      card.dataset.title = item.filename || '';
+      card.dataset.filename = item.filename || '';
+      card.dataset.title = item.display_title || item.filename || '';
       card.dataset.speaker = item.speaker || '';
       card.dataset.tags = tags.join(',');
 
@@ -1448,6 +1758,46 @@ function renderCards(summaries) {
             </svg>
           </button>`;
 
+      const renameBtnHtml = `<button class="rename-btn"
+              data-filename="${esc(item.filename)}"
+              title="改標題（不改檔名）"
+              onclick="event.stopPropagation(); startRename(this)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="1.8"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 20h9"/>
+              <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>
+            </svg>
+          </button>`;
+
+      const hideBtnHtml = `<button class="hide-btn"
+              data-filename="${esc(item.filename)}"
+              title="隱藏 / 取消隱藏這篇"
+              onclick="event.stopPropagation(); toggleHideCard(this)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="1.8"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+              <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
+              <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/>
+              <line x1="1" y1="1" x2="23" y2="23"/>
+            </svg>
+          </button>`;
+
+      const deleteBtnHtml = `<button class="delete-btn"
+              data-filename="${esc(item.filename)}"
+              title="刪除（移到回收區，可復原）"
+              onclick="event.stopPropagation(); deleteCard(this)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="1.8"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+              <line x1="10" y1="11" x2="10" y2="17"/>
+              <line x1="14" y1="11" x2="14" y2="17"/>
+            </svg>
+          </button>`;
+
       const pitchHtml = item.elevator_pitch
         ? `<div class="card-pitch">${esc(item.elevator_pitch)}</div>` : '';
 
@@ -1462,7 +1812,8 @@ function renderCards(summaries) {
 
       card.innerHTML = `
         <div class="card-header" onclick="toggleCard(this)">
-          <span class="card-title-text">${esc(item.filename)}</span>
+          <span class="card-title-text">${esc(item.display_title || item.filename)}</span>
+          <span class="card-hidden-badge">已隱藏</span>
           <div class="card-actions">
             <div class="card-quick-actions">
               ${logicBtnHtml}
@@ -1470,6 +1821,9 @@ function renderCards(summaries) {
               ${introBtnHtml}
               ${challengeBtnHtml}
               ${mindmapBtnHtml}
+              ${renameBtnHtml}
+              ${hideBtnHtml}
+              ${deleteBtnHtml}
             </div>
             <button class="menu-btn" title="更多操作（快捷鍵）"
                     onclick="event.stopPropagation(); toggleActions(this)">
@@ -1500,8 +1854,8 @@ function renderCards(summaries) {
   // Rebuild tag chips
   rebuildTagChips([...allTagsSet].sort());
 
-  // Re-apply any active filter
-  applyFilter();
+  // 重新標記隱藏狀態（重繪後卡片是全新的）並套用篩選
+  applyHiddenState();
 
   // Update header count
   document.querySelector('header p.meta').textContent =

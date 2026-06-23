@@ -10,6 +10,7 @@ import html
 import json
 import os
 import re
+import shutil
 import sys
 import subprocess
 import threading
@@ -41,8 +42,12 @@ from enrich_logic import (
     generate_logic as _generate_logic_text,
     insert_logic,
 )
+from enrich_synthesis import (
+    generate_synthesis as _generate_synthesis_text,
+    insert_synthesis,
+)
 from prompts import RECALL_CHALLENGE_SYSTEM, RECALL_CHALLENGE_USER_TEMPLATE
-from recategorize import extract_summary_top, split_frontmatter
+from recategorize import extract_summary_top, split_frontmatter, update_frontmatter_keys
 
 # ---------------------------------------------------------------------------
 # Paths / taxonomy
@@ -50,6 +55,7 @@ from recategorize import extract_summary_top, split_frontmatter
 BASE_DIR = Path(__file__).parent
 SUMMARIES_DIR = BASE_DIR / "outputs" / "summaries"
 MARKMAP_DIR = BASE_DIR / "outputs" / "markmap"
+TRASH_DIR = BASE_DIR / "outputs" / "_trash"
 TAXONOMY_PATH = BASE_DIR / "category_taxonomy.yaml"
 
 
@@ -152,12 +158,13 @@ def collect_summaries() -> list[dict]:
             "path": md.name,
             "category": cat,
             "subcategory": fm.get("subcategory") or "",
-            "tags": fm.get("tags") or [],
+            "tags": [str(t) for t in (fm.get("tags") or [])],
             "speaker": fm.get("speaker") or "未知",
             "duration": fm.get("duration") or "-",
             "generated_at": str(fm.get("generated_at") or ""),
             "source": fm.get("source") or "",
             "yt_title": fm.get("yt_title") or md.stem,
+            "display_title": fm.get("display_title") or md.stem,
             "thesis": fm.get("thesis") or "",
             "weekly_action": fm.get("weekly_action") or "",
             "elevator_pitch": extract_elevator_pitch(md),
@@ -439,6 +446,61 @@ def api_summaries():
     return jsonify(collect_summaries())
 
 
+@app.route("/delete/<path:filename>", methods=["POST"])
+def delete_summary(filename: str):
+    """把某篇的 .md/.mmd/.srt/.html 移到 outputs/_trash/（可復原），不硬刪。"""
+    if "/" in filename or "\\" in filename or ".." in filename:
+        return jsonify({"error": "filename 不合法"}), 400
+
+    md_path = SUMMARIES_DIR / f"{filename}.md"
+    if not md_path.exists():
+        return jsonify({"error": f"找不到摘要：{filename}"}), 404
+
+    targets = [
+        (SUMMARIES_DIR / f"{filename}.md", TRASH_DIR / "summaries" / f"{filename}.md"),
+        (SUMMARIES_DIR / f"{filename}.mmd", TRASH_DIR / "summaries" / f"{filename}.mmd"),
+        (TRANSCRIPTS_DIR / f"{filename}.srt", TRASH_DIR / "transcripts" / f"{filename}.srt"),
+        (MARKMAP_DIR / f"{filename}.html", TRASH_DIR / "markmap" / f"{filename}.html"),
+    ]
+    moved = []
+    for src, dst in targets:
+        if not src.exists():
+            continue
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        if dst.exists():
+            dst.unlink()
+        shutil.move(str(src), str(dst))
+        moved.append(src.name)
+    return jsonify({"ok": True, "moved": moved})
+
+
+@app.route("/rename/<path:filename>", methods=["POST"])
+def rename_summary(filename: str):
+    """改顯示標題：寫入 .md frontmatter 的 display_title，不改檔名。"""
+    if "/" in filename or "\\" in filename or ".." in filename:
+        return jsonify({"error": "filename 不合法"}), 400
+
+    data = request.get_json(silent=True) or {}
+    title = (data.get("title") or "").strip()
+    if not title:
+        return jsonify({"error": "標題不可為空"}), 400
+
+    md_path = SUMMARIES_DIR / f"{filename}.md"
+    if not md_path.exists():
+        return jsonify({"error": f"找不到摘要：{filename}"}), 404
+
+    text = md_path.read_text(encoding="utf-8")
+    fm_block, body, _fm = split_frontmatter(text)
+    if not fm_block:
+        return jsonify({"error": "此檔無 frontmatter，無法寫入標題"}), 400
+
+    new_fm = update_frontmatter_keys(
+        fm_block, {"display_title": json.dumps(title, ensure_ascii=False)}
+    )
+    md_path.write_text(new_fm + "\n" + body, encoding="utf-8")
+    return jsonify({"ok": True, "display_title": title})
+
+
 # 共用 OpenAI client（thread-safe；DeepSeek base url）
 _DEEPSEEK_CLIENT = None
 _DEEPSEEK_CLIENT_LOCK = threading.Lock()
@@ -456,6 +518,7 @@ def _get_deepseek_client() -> OpenAI:
 _INTRO_HEADING_RE = re.compile(r"^##\s*導讀.*\n", re.MULTILINE)  # 含整行標題（避免「（線性帶入）」殘留進 body）
 _DIGEST_HEADING_RE = re.compile(r"^##\s*乾貨摘要.*\n", re.MULTILINE)  # 含整行標題
 _LOGIC_HEADING_RE = re.compile(r"^##\s*邏輯拆解.*\n", re.MULTILINE)  # 含整行標題
+_SYNTHESIS_HEADING_RE = re.compile(r"^##\s*融會貫通.*\n", re.MULTILINE)  # 含整行標題
 
 
 @app.route("/intro/<path:filename>")
@@ -638,6 +701,40 @@ def logic_generate(filename: str):
     return jsonify({"logic": logic_text, "filename": filename})
 
 
+@app.route("/synthesis/<path:filename>/generate", methods=["POST"])
+def synthesis_generate(filename: str):
+    """即時為單篇 .md 產融會貫通（一段式 elevator pitch）並寫回檔案。回 {synthesis: 純文字}。"""
+    if "/" in filename or "\\" in filename or ".." in filename:
+        return jsonify({"error": "filename 不合法"}), 400
+
+    md_path = SUMMARIES_DIR / f"{filename}.md"
+    if not md_path.exists():
+        return jsonify({"error": f"找不到摘要：{filename}"}), 404
+
+    text = md_path.read_text(encoding="utf-8")
+    fm_block, body, _fm = split_frontmatter(text)
+
+    breakdown = extract_breakdown(body)
+    if not breakdown:
+        return jsonify({"error": "找不到「## 完整拆解」段，無法產融會貫通"}), 400
+
+    try:
+        client = _get_deepseek_client()
+        with _DEEPSEEK_SEM:
+            synthesis_text = _generate_synthesis_text(client, filename, breakdown)
+    except Exception as e:
+        return jsonify({"error": f"{type(e).__name__}: {e}"}), 500
+
+    if not synthesis_text or len(synthesis_text) < 80:
+        return jsonify({"error": f"LLM 回傳過短（{len(synthesis_text)} 字），疑似失敗"}), 500
+
+    new_body = insert_synthesis(body, synthesis_text)
+    new_text = fm_block + "\n\n" + new_body.lstrip("\n")
+    md_path.write_text(new_text, encoding="utf-8")
+
+    return jsonify({"synthesis": synthesis_text, "filename": filename})
+
+
 # ---------------------------------------------------------------------------
 # 乾貨快讀頁（standalone catch-up reading page）
 #   只顯示「標題 + 乾貨摘要」，無心智圖 / 學習工具；[mm:ss] 連到 YouTube 該時間點
@@ -689,6 +786,7 @@ def catchup_page():
         e["digest_html"] = _digest_to_html(
             _extract_section(md, _DIGEST_HEADING_RE), e.get("source")
         )
+        e["synthesis_html"] = html.escape(_extract_section(md, _SYNTHESIS_HEADING_RE))
     groups = group_summaries(entries)
     return render_template("catchup.html", groups=groups, total=len(entries))
 

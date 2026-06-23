@@ -10,6 +10,7 @@
 """
 import argparse
 import re
+import sys
 from pathlib import Path
 
 from openai import OpenAI
@@ -111,6 +112,12 @@ def main():
     parser.add_argument("--force", action="store_true", help="強制重產既有邏輯拆解")
     parser.add_argument("--show-full", action="store_true", help="dry-run 印出完整邏輯內文")
     args = parser.parse_args()
+
+    # Windows 主控台/重導向預設 cp950，遇到非 cp950 漢字 print 會 UnicodeEncodeError 中斷整批；強制 utf-8 輸出
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
     require_api_key()
     client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)

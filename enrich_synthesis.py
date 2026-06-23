@@ -1,12 +1,12 @@
-"""為既有摘要補「## 導讀（線性帶入）」段，插入在 elevator pitch 後、精選摘要前。
-讀現有「## 完整拆解」當輸入跑 LLM 產 600-900 字散文。
-預設跳過已有「## 導讀」的篇。
+"""為既有摘要補「## 融會貫通」段：把整篇整理成一段式的 elevator pitch（融會貫通）。
+讀現有「## 完整拆解」當輸入跑 LLM，插入在「## 精選摘要」之前（全篇最上方的總覽）。
+預設跳過已有「## 融會貫通」的篇。
 
 用法：
-  python enrich_intro.py                     # dry-run（預設）
-  python enrich_intro.py --apply             # 寫入
-  python enrich_intro.py --file <檔名.md>    # 單篇 dry-run
-  python enrich_intro.py --apply --force     # 強制重產（覆蓋既有導讀）
+  python enrich_synthesis.py                     # dry-run（預設）
+  python enrich_synthesis.py --apply             # 寫入
+  python enrich_synthesis.py --file <檔名.md>    # 單篇 dry-run
+  python enrich_synthesis.py --apply --force     # 強制重產（覆蓋既有）
 """
 import argparse
 import re
@@ -16,66 +16,50 @@ from pathlib import Path
 from openai import OpenAI
 
 from config import DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, DEEPSEEK_MODEL, require_api_key
-from prompts import INTRO_SYSTEM, INTRO_USER_TEMPLATE
+from enrich_intro import extract_breakdown  # 共用 8 段拆解抽取邏輯
+from prompts import SYNTHESIS_SYSTEM, SYNTHESIS_USER_TEMPLATE
 from recategorize import SUMMARIES_DIR, load_taxonomy, split_frontmatter
 
-INTRO_HEADING = "## 導讀（線性帶入）"
+SYNTHESIS_HEADING = "## 融會貫通"
+SYNTHESIS_HEADING_RE = re.compile(r"^##\s*融會貫通", re.MULTILINE)
+# 插入點：精選摘要之前（全篇最上方的總覽）；fallback 完整拆解前；都無則 body 開頭
 SUMMARY_HEADING_RE = re.compile(r"^##\s*精選摘要", re.MULTILINE)
 BREAKDOWN_HEADING_RE = re.compile(r"^##\s*完整拆解", re.MULTILINE)
-# 早期版本沒「## 完整拆解」父標題，8 段直接用 ## 一、…，fallback 找 H2 一、
 BREAKDOWN_FALLBACK_RE = re.compile(r"^##\s*一[、，,．.\s]", re.MULTILINE)
-INTRO_HEADING_RE = re.compile(r"^##\s*導讀", re.MULTILINE)
 
 
-def extract_breakdown(body: str) -> str:
-    """抽 8 段拆解內容。優先找「## 完整拆解」父標題，fallback 找「## 一、...」(早期版本)。"""
-    m = BREAKDOWN_HEADING_RE.search(body)
-    if m:
-        return body[m.start():].strip()
-    m = BREAKDOWN_FALLBACK_RE.search(body)
-    if m:
-        return body[m.start():].strip()
-    return ""
+def has_synthesis(body: str) -> bool:
+    return bool(SYNTHESIS_HEADING_RE.search(body))
 
 
-def has_intro(body: str) -> bool:
-    return bool(INTRO_HEADING_RE.search(body))
+def _insert_pos(body: str) -> int:
+    for rx in (SUMMARY_HEADING_RE, BREAKDOWN_HEADING_RE, BREAKDOWN_FALLBACK_RE):
+        m = rx.search(body)
+        if m:
+            return m.start()
+    return 0
 
 
-def insert_intro(body: str, intro_text: str) -> str:
-    """把導讀段插入 body：放在「## 精選摘要」前面（自動找位置）。
-    若 body 已有「## 導讀」段，先移除舊的再插。"""
-    intro_block = f"\n\n{INTRO_HEADING}\n\n{intro_text.strip()}\n"
+def insert_synthesis(body: str, synthesis_text: str) -> str:
+    """把融會貫通段插入「## 精選摘要」之前。若已有舊段，先移除再插。"""
+    block = f"\n\n{SYNTHESIS_HEADING}\n\n{synthesis_text.strip()}\n"
 
-    # 移除既有導讀段（從「## 導讀」到下個 H2 標題前）
-    if has_intro(body):
-        m_intro = INTRO_HEADING_RE.search(body)
-        # 找下個 ## 標題作為終點
-        next_h2 = re.search(r"^##\s", body[m_intro.end():], re.MULTILINE)
-        if next_h2:
-            end = m_intro.end() + next_h2.start()
-        else:
-            end = len(body)
-        body = body[:m_intro.start()] + body[end:]
+    if has_synthesis(body):
+        m_old = SYNTHESIS_HEADING_RE.search(body)
+        next_h2 = re.search(r"^##\s", body[m_old.end():], re.MULTILINE)
+        end = m_old.end() + next_h2.start() if next_h2 else len(body)
+        body = body[:m_old.start()] + body[end:]
 
-    # 找「## 精選摘要」位置插入導讀
-    m_sum = SUMMARY_HEADING_RE.search(body)
-    if not m_sum:
-        # 沒精選摘要 — 插在「## 完整拆解」前；若也沒就放在 body 開頭
-        m_break = BREAKDOWN_HEADING_RE.search(body)
-        insertion_pos = m_break.start() if m_break else 0
-    else:
-        insertion_pos = m_sum.start()
-
-    return body[:insertion_pos].rstrip() + intro_block + "\n" + body[insertion_pos:].lstrip("\n")
+    pos = _insert_pos(body)
+    return body[:pos].rstrip() + block + "\n" + body[pos:].lstrip("\n")
 
 
-def generate_intro(client: OpenAI, title: str, breakdown: str) -> str:
-    user_content = INTRO_USER_TEMPLATE.format(title=title, full_breakdown=breakdown)
+def generate_synthesis(client: OpenAI, title: str, breakdown: str) -> str:
+    user_content = SYNTHESIS_USER_TEMPLATE.format(title=title, full_breakdown=breakdown)
     resp = client.chat.completions.create(
         model=DEEPSEEK_MODEL,
         messages=[
-            {"role": "system", "content": INTRO_SYSTEM},
+            {"role": "system", "content": SYNTHESIS_SYSTEM},
             {"role": "user", "content": user_content},
         ],
         temperature=0.4,
@@ -95,28 +79,28 @@ def process_file(path: Path, client: OpenAI, dry_run: bool, force: bool) -> dict
     if fm.get("_skip_index"):
         return {"skipped": True, "reason": "_skip_index flag"}
 
-    if has_intro(body) and not force:
-        return {"skipped": True, "reason": "已有導讀（用 --force 重產）"}
+    if has_synthesis(body) and not force:
+        return {"skipped": True, "reason": "已有融會貫通（用 --force 重產）"}
 
     breakdown = extract_breakdown(body)
     if not breakdown:
-        return {"error": "找不到「## 完整拆解」段，無法產導讀"}
+        return {"error": "找不到「## 完整拆解」段，無法產融會貫通"}
 
     title = path.stem
-    intro = generate_intro(client, title, breakdown)
+    synthesis = generate_synthesis(client, title, breakdown)
 
-    if not intro or len(intro) < 200:
-        return {"error": f"LLM 回傳過短（{len(intro)} 字），疑似失敗"}
+    if not synthesis or len(synthesis) < 80:
+        return {"error": f"LLM 回傳過短（{len(synthesis)} 字），疑似失敗"}
 
     if not dry_run:
-        new_body = insert_intro(body, intro)
+        new_body = insert_synthesis(body, synthesis)
         new_text = fm_block + "\n\n" + new_body.lstrip("\n")
         path.write_text(new_text, encoding="utf-8")
 
     return {
-        "intro_preview": intro[:200] + ("..." if len(intro) > 200 else ""),
-        "intro_full": intro,
-        "char_count": len(intro),
+        "synthesis_preview": synthesis[:200] + ("..." if len(synthesis) > 200 else ""),
+        "synthesis_full": synthesis,
+        "char_count": len(synthesis),
         "applied": not dry_run,
     }
 
@@ -125,8 +109,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--apply", action="store_true", help="實際寫入；預設 dry-run")
     parser.add_argument("--file", type=str, help="只處理單一檔名（強制 dry-run）")
-    parser.add_argument("--force", action="store_true", help="強制重產既有導讀")
-    parser.add_argument("--show-full", action="store_true", help="dry-run 印出完整導讀內文")
+    parser.add_argument("--force", action="store_true", help="強制重產既有融會貫通")
+    parser.add_argument("--show-full", action="store_true", help="dry-run 印出完整內文")
     args = parser.parse_args()
 
     # Windows 主控台/重導向預設 cp950，遇到非 cp950 漢字 print 會 UnicodeEncodeError 中斷整批；強制 utf-8 輸出
@@ -173,17 +157,17 @@ def main():
         print(f"[{i}/{len(files)}] {path.stem}  ({r['char_count']} 字)")
         if args.show_full or len(files) == 1:
             print()
-            print(r["intro_full"])
+            print(r["synthesis_full"])
             print()
         else:
-            print(f"    {r['intro_preview']}")
+            print(f"    {r['synthesis_preview']}")
         done_n += 1
 
     print()
     print("=== 總結 ===")
     print(f"產生：{done_n} | 跳過：{skipped_n} | 錯誤：{error_n}")
     if dry_run and done_n > 0:
-        print("\n(dry-run。確認 OK 跑 `python enrich_intro.py --apply`)")
+        print("\n(dry-run。確認 OK 跑 `python enrich_synthesis.py --apply`)")
 
 
 if __name__ == "__main__":
