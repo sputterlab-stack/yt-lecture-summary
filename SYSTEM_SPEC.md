@@ -188,7 +188,7 @@ skip_files:
 
 ### `GET /catchup`
 
-乾貨快讀頁（server-rendered，`templates/catchup.html`）：每篇列「標題 + 🧩 融會貫通（整理後一段式 elevator pitch）+ 乾貨摘要」，無心智圖/展開/學習工具。融會貫通用 `_extract_section(md, _SYNTHESIS_HEADING_RE)` 抽（純文字、`html.escape`，無時間戳連結）；乾貨用 `_extract_section(md, _DIGEST_HEADING_RE)`，`_digest_to_html()` 把 `[mm:ss]` 換成 `https://www.youtube.com/watch?v=<id>&t=<秒>s` 連結（`_youtube_id()` 從 frontmatter `source` 抽 11 碼 id）。兩者皆「缺則顯示 ▶ 生成 按鈕」即時補（`genSynthesis` / `genDigest` → POST generate → reload）。前端純標題/講者/tag 文字搜尋。
+乾貨快讀頁（server-rendered，`templates/catchup.html`）：每篇列「標題 + 🧩 融會貫通（結構化重點整理）+ 乾貨摘要」，無心智圖/展開/學習工具。融會貫通用 `_extract_section(md, _SYNTHESIS_HEADING_RE)` 抽，經 `_synthesis_to_html()` 把 Markdown（`###` 小標 / 清單 / `**粗體**`）轉成安全 HTML 顯示（`.synth-h`/`ul`/`li` 樣式見 catchup.html）；乾貨用 `_extract_section(md, _DIGEST_HEADING_RE)`，`_digest_to_html()` 把 `[mm:ss]` 換成 `https://www.youtube.com/watch?v=<id>&t=<秒>s` 連結（`_youtube_id()` 從 frontmatter `source` 抽 11 碼 id）。兩者皆「缺則顯示 ▶ 生成 按鈕」即時補（`genSynthesis` / `genDigest` → POST generate → reload）。前端純標題/講者/tag 文字搜尋。
 
 ### `GET /logic/<filename>` ＋ `POST /logic/<filename>/generate`
 
@@ -203,7 +203,7 @@ skip_files:
 
 ### `POST /synthesis/<filename>/generate`
 
-讀 `## 完整拆解`（`extract_breakdown`）餵 `SYNTHESIS_*` prompt，產一段式「融會貫通」（整理後的 elevator pitch，150–250 字白話散文），用 `insert_synthesis()` 插在 `## 精選摘要` 之前並寫回，回 `{ "synthesis": "...", "filename": "..." }`。受 `_DEEPSEEK_SEM` 控併發；過短門檻 80 字。catchup 頁在缺此段時顯示「▶ 生成融會貫通」按鈕觸發。批次補產：`python enrich_synthesis.py --apply`（dry-run 預設、`--force` 重產、`--file` 單篇），與 `enrich_logic.py` 同構。
+讀 `## 完整拆解`（`extract_breakdown`）**＋對應 `.srt` 逐字稿**（`srt_to_timestamped_text`）餵 `SYNTHESIS_*` prompt，產「結構隨內容走」的結構化重點整理「融會貫通」（排名→排名清單、流程→步驟、論證→主張+證據+反例…；Markdown，標題用 `###`、禁 `##`/表格；含 ASR 同音錯字校正），用 `insert_synthesis()` 插在 `## 精選摘要` 之前並寫回，回 `{ "synthesis": "...", "filename": "..." }`。受 `_DEEPSEEK_SEM` 控併發；過短門檻 80 字。catchup 頁在缺此段時顯示「▶ 生成融會貫通」按鈕觸發。批次補產：`python enrich_synthesis.py --apply`（dry-run 預設、`--force` 重產、`--file` 單篇；`--file … --apply` 可只寫單篇）。
 
 ```json
 // Request
@@ -294,7 +294,7 @@ done (step 5)
 | `INTRO_SYSTEM` + `INTRO_USER_TEMPLATE` | 線性導讀 | `enrich_intro.py`、`web_server /intro/<f>/generate` |
 | `DIGEST_SYSTEM` + `DIGEST_USER_TEMPLATE` | 乾貨摘要（30 秒 catch-up，帶時間戳 beats；輸入為 `.srt` 逐字稿，placeholder `{transcript}`） | `enrich_digest.py`、`web_server /digest/<f>/generate` |
 | `LOGIC_SYSTEM` + `LOGIC_USER_TEMPLATE` | 邏輯拆解（第一性原理推導鏈 × 多視角） | `enrich_logic.py`、`web_server /logic/<f>/generate` |
-| `SYNTHESIS_SYSTEM` + `SYNTHESIS_USER_TEMPLATE` | 融會貫通（整理後的一段式 elevator pitch；輸入為 `## 完整拆解`） | `enrich_synthesis.py`、`web_server /synthesis/<f>/generate` |
+| `SYNTHESIS_SYSTEM` + `SYNTHESIS_USER_TEMPLATE` | 融會貫通（「結構隨內容走」結構化重點整理，排名/流程/論證/敘事依內容選結構；輸入為 `## 完整拆解` ＋ `.srt` 逐字稿） | `enrich_synthesis.py`、`web_server /synthesis/<f>/generate` |
 | `RECALL_CHALLENGE_SYSTEM` + `RECALL_CHALLENGE_USER_TEMPLATE` | Active Recall 評估 | `web_server /challenge` |
 
 `USER_PROMPT_TEMPLATE` 在 module load 時用 `_RAW_USER_PROMPT.replace("{TAXONOMY_TEXT}", TAXONOMY_TEXT)` 動態注入 taxonomy；其餘 `{yt_title}` `{transcript}` 等仍由 `summarizer` `.format()` 處理。

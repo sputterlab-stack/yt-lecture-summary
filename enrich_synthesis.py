@@ -1,12 +1,13 @@
-"""為既有摘要補「## 融會貫通」段：把整篇整理成一段式的 elevator pitch（融會貫通）。
-讀現有「## 完整拆解」當輸入跑 LLM，插入在「## 精選摘要」之前（全篇最上方的總覽）。
-預設跳過已有「## 融會貫通」的篇。
+"""為既有摘要補/重產「## 融會貫通」段：以「結構隨內容走」把整篇整理成可掃描的結構化重點
+（排名→排名清單、流程→步驟、論證→主張+證據+反例…）。讀「## 完整拆解」+ 對應 .srt 逐字稿
+當輸入跑 LLM，插入在「## 精選摘要」之前（全篇最上方的總覽）。預設跳過已有「## 融會貫通」者。
 
 用法：
-  python enrich_synthesis.py                     # dry-run（預設）
-  python enrich_synthesis.py --apply             # 寫入
-  python enrich_synthesis.py --file <檔名.md>    # 單篇 dry-run
-  python enrich_synthesis.py --apply --force     # 強制重產（覆蓋既有）
+  python enrich_synthesis.py                                   # 全部 dry-run（預設）
+  python enrich_synthesis.py --apply                           # 全部寫入
+  python enrich_synthesis.py --file <檔名.md>                  # 單篇 dry-run
+  python enrich_synthesis.py --file <檔名.md> --apply --force  # 單篇強制重產並寫入
+  python enrich_synthesis.py --apply --force                   # 全部強制重產（覆蓋既有）
 """
 import argparse
 import re
@@ -17,6 +18,7 @@ from openai import OpenAI
 
 from config import DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, DEEPSEEK_MODEL, require_api_key
 from enrich_intro import extract_breakdown  # 共用 8 段拆解抽取邏輯
+from enrich_digest import srt_to_timestamped_text, TRANSCRIPTS_DIR  # 逐字稿當完整性來源
 from prompts import SYNTHESIS_SYSTEM, SYNTHESIS_USER_TEMPLATE
 from recategorize import SUMMARIES_DIR, load_taxonomy, split_frontmatter
 
@@ -54,8 +56,11 @@ def insert_synthesis(body: str, synthesis_text: str) -> str:
     return body[:pos].rstrip() + block + "\n" + body[pos:].lstrip("\n")
 
 
-def generate_synthesis(client: OpenAI, title: str, breakdown: str) -> str:
-    user_content = SYNTHESIS_USER_TEMPLATE.format(title=title, full_breakdown=breakdown)
+def generate_synthesis(client: OpenAI, title: str, breakdown: str, transcript: str = "") -> str:
+    user_content = SYNTHESIS_USER_TEMPLATE.format(
+        title=title, full_breakdown=breakdown,
+        transcript=transcript or "（無逐字稿，僅依完整拆解）",
+    )
     resp = client.chat.completions.create(
         model=DEEPSEEK_MODEL,
         messages=[
@@ -87,7 +92,9 @@ def process_file(path: Path, client: OpenAI, dry_run: bool, force: bool) -> dict
         return {"error": "找不到「## 完整拆解」段，無法產融會貫通"}
 
     title = path.stem
-    synthesis = generate_synthesis(client, title, breakdown)
+    srt_path = TRANSCRIPTS_DIR / f"{title}.srt"
+    transcript = srt_to_timestamped_text(srt_path) if srt_path.exists() else ""
+    synthesis = generate_synthesis(client, title, breakdown, transcript)
 
     if not synthesis or len(synthesis) < 80:
         return {"error": f"LLM 回傳過短（{len(synthesis)} 字），疑似失敗"}
@@ -108,7 +115,7 @@ def process_file(path: Path, client: OpenAI, dry_run: bool, force: bool) -> dict
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--apply", action="store_true", help="實際寫入；預設 dry-run")
-    parser.add_argument("--file", type=str, help="只處理單一檔名（強制 dry-run）")
+    parser.add_argument("--file", type=str, help="只處理單一檔名（要寫入需再加 --apply）")
     parser.add_argument("--force", action="store_true", help="強制重產既有融會貫通")
     parser.add_argument("--show-full", action="store_true", help="dry-run 印出完整內文")
     args = parser.parse_args()
@@ -123,7 +130,7 @@ def main():
     client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
     taxonomy_cfg = load_taxonomy()
     skip_files = set(taxonomy_cfg.get("skip_files") or [])
-    dry_run = not args.apply or bool(args.file)
+    dry_run = not args.apply
 
     if args.file:
         files = [SUMMARIES_DIR / args.file]

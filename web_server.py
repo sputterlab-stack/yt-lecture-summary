@@ -718,10 +718,13 @@ def synthesis_generate(filename: str):
     if not breakdown:
         return jsonify({"error": "找不到「## 完整拆解」段，無法產融會貫通"}), 400
 
+    srt_path = TRANSCRIPTS_DIR / f"{filename}.srt"
+    transcript = srt_to_timestamped_text(srt_path) if srt_path.exists() else ""
+
     try:
         client = _get_deepseek_client()
         with _DEEPSEEK_SEM:
-            synthesis_text = _generate_synthesis_text(client, filename, breakdown)
+            synthesis_text = _generate_synthesis_text(client, filename, breakdown, transcript)
     except Exception as e:
         return jsonify({"error": f"{type(e).__name__}: {e}"}), 500
 
@@ -778,6 +781,49 @@ def _digest_to_html(digest: str, source: str) -> str:
     return esc
 
 
+_SYN_BOLD_RE = re.compile(r"\*\*(.+?)\*\*")
+
+
+def _syn_inline(s: str) -> str:
+    return _SYN_BOLD_RE.sub(r"<strong>\1</strong>", html.escape(s))
+
+
+def _synthesis_to_html(md: str) -> str:
+    """把結構化融會貫通 markdown 轉成安全 HTML（### 小標 / 清單 / **粗體**）；供 catchup 顯示。"""
+    if not md:
+        return ""
+    out, in_ul = [], False
+
+    def close_ul():
+        nonlocal in_ul
+        if in_ul:
+            out.append("</ul>")
+            in_ul = False
+
+    for raw in md.splitlines():
+        line = raw.rstrip()
+        if not line.strip():
+            close_ul()
+            continue
+        mh = re.match(r"^#{3,6}\s+(.*)$", line)
+        mb = re.match(r"^\s*[-*]\s+(.*)$", line)
+        if mh:
+            close_ul()
+            out.append(f'<div class="synth-h">{_syn_inline(mh.group(1))}</div>')
+        elif mb:
+            if not in_ul:
+                out.append("<ul>")
+                in_ul = True
+            out.append(f"<li>{_syn_inline(mb.group(1))}</li>")
+        elif re.match(r"^\s*-{3,}\s*$", line):
+            close_ul()
+        else:
+            close_ul()
+            out.append(f"<p>{_syn_inline(line)}</p>")
+    close_ul()
+    return "\n".join(out)
+
+
 @app.route("/catchup")
 def catchup_page():
     entries = collect_summaries()
@@ -786,7 +832,7 @@ def catchup_page():
         e["digest_html"] = _digest_to_html(
             _extract_section(md, _DIGEST_HEADING_RE), e.get("source")
         )
-        e["synthesis_html"] = html.escape(_extract_section(md, _SYNTHESIS_HEADING_RE))
+        e["synthesis_html"] = _synthesis_to_html(_extract_section(md, _SYNTHESIS_HEADING_RE))
     groups = group_summaries(entries)
     return render_template("catchup.html", groups=groups, total=len(entries))
 

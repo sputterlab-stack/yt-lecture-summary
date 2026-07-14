@@ -8,7 +8,7 @@ load_dotenv(Path(__file__).parent / ".env")
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
 DEEPSEEK_MODEL = "deepseek-v4-pro"
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
-WHISPER_MODEL = "base"
+WHISPER_MODEL = "small"  # base→small：中文轉錄準度明顯較佳（數字/專有名詞/中英混雜），CPU 仍可跑；有 GPU 可再上 medium
 OUTPUT_ROOT = Path(__file__).parent / "outputs"
 
 # ffmpeg.exe 所在目錄。yt-dlp 與 whisper 都需要 ffmpeg；若已在系統 PATH 設為 ""
