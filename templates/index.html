@@ -680,9 +680,70 @@
       display: none;
     }
     .no-results.visible { display: block; }
-  </style>
+
+    /* 卡片圖示：幾何形狀只在下方 sprite 定義一次，卡片內用 <use> 引用。
+       改前每張卡片內嵌 8-9 份完整 SVG（163 張 = 1,398 份），佔了首頁 HTML 的 44.7%。 */
+    .ico { width: 20px; height: 20px; fill: none; stroke: currentColor;
+           stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .ico-fill { fill: currentColor; stroke: none; }  </style>
 </head>
 <body>
+
+<!-- 圖示 sprite（只出現一次；卡片與 renderCards() 兩條渲染路徑共用同一份定義） -->
+<svg style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true" focusable="false">
+  <defs>
+    <g id="i-logic">
+      <line x1="6" y1="3" x2="6" y2="15"/>
+      <circle cx="18" cy="6" r="3"/>
+      <circle cx="6" cy="18" r="3"/>
+      <path d="M18 9a9 9 0 0 1-9 9"/>
+    </g>
+    <g id="i-digest">
+      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+    </g>
+    <g id="i-intro">
+      <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
+      <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+    </g>
+    <g id="i-challenge">
+      <circle cx="12" cy="12" r="9"/>
+      <path d="M9.5 9a2.5 2.5 0 1 1 4 2c-.8.8-1.5 1.3-1.5 2.5"/>
+      <line x1="12" y1="17" x2="12" y2="17.01"/>
+    </g>
+    <g id="i-mindmap">
+      <circle cx="12" cy="12" r="2"/>
+      <circle cx="4" cy="5" r="1.5"/>
+      <circle cx="4" cy="19" r="1.5"/>
+      <circle cx="20" cy="5" r="1.5"/>
+      <circle cx="20" cy="19" r="1.5"/>
+      <path d="M5.5 6 L10 11"/>
+      <path d="M5.5 18 L10 13"/>
+      <path d="M18.5 6 L14 11"/>
+      <path d="M18.5 18 L14 13"/>
+    </g>
+    <g id="i-rename">
+      <path d="M12 20h9"/>
+      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>
+    </g>
+    <g id="i-hide">
+      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+      <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
+      <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/>
+      <line x1="1" y1="1" x2="23" y2="23"/>
+    </g>
+    <g id="i-delete">
+      <polyline points="3 6 5 6 21 6"/>
+      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+      <line x1="10" y1="11" x2="10" y2="17"/>
+      <line x1="14" y1="11" x2="14" y2="17"/>
+    </g>
+    <g id="i-menu">
+      <circle cx="5" cy="12" r="1.7"/>
+      <circle cx="12" cy="12" r="1.7"/>
+      <circle cx="19" cy="12" r="1.7"/>
+    </g>
+  </defs>
+</svg>
 
 <header>
   <h1>YT 演講摘要 Dashboard</h1>
@@ -758,105 +819,48 @@
           <button class="logic-btn" data-filename="{{ item.filename }}"
                   title="邏輯拆解（第一性原理推導鏈 × 多視角壓力測試）"
                   onclick="event.stopPropagation(); openLogic(this.dataset.filename)">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-                 stroke="currentColor" stroke-width="1.8"
-                 stroke-linecap="round" stroke-linejoin="round">
-              <line x1="6" y1="3" x2="6" y2="15"/>
-              <circle cx="18" cy="6" r="3"/>
-              <circle cx="6" cy="18" r="3"/>
-              <path d="M18 9a9 9 0 0 1-9 9"/>
-            </svg>
+            <svg class="ico" viewBox="0 0 24 24"><use href="#i-logic"/></svg>
           </button>
           <button class="digest-btn" data-filename="{{ item.filename }}"
                   title="乾貨摘要（30 秒 catch up · 帶時間戳 beats）"
                   onclick="event.stopPropagation(); openDigest(this.dataset.filename)">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-                 stroke="currentColor" stroke-width="1.8"
-                 stroke-linecap="round" stroke-linejoin="round">
-              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-            </svg>
+            <svg class="ico" viewBox="0 0 24 24"><use href="#i-digest"/></svg>
           </button>
           <button class="intro-btn" data-filename="{{ item.filename }}"
                   title="導讀（線性帶入）"
                   onclick="event.stopPropagation(); openIntro(this.dataset.filename)">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-                 stroke="currentColor" stroke-width="1.8"
-                 stroke-linecap="round" stroke-linejoin="round">
-              <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
-              <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
-            </svg>
+            <svg class="ico" viewBox="0 0 24 24"><use href="#i-intro"/></svg>
           </button>
           <button class="challenge-btn" data-filename="{{ item.filename }}"
                   title="考自己（合上摘要 active recall）"
                   onclick="event.stopPropagation(); openChallenge(this.dataset.filename)">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-                 stroke="currentColor" stroke-width="1.8"
-                 stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="9"/>
-              <path d="M9.5 9a2.5 2.5 0 1 1 4 2c-.8.8-1.5 1.3-1.5 2.5"/>
-              <line x1="12" y1="17" x2="12" y2="17.01"/>
-            </svg>
+            <svg class="ico" viewBox="0 0 24 24"><use href="#i-challenge"/></svg>
           </button>
           {% if item.markmap_url %}
           <a href="{{ item.markmap_url }}" target="_blank" class="mindmap-btn"
              title="開心智圖" onclick="event.stopPropagation()">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-                 stroke="currentColor" stroke-width="1.8"
-                 stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="2"/>
-              <circle cx="4" cy="5" r="1.5"/>
-              <circle cx="4" cy="19" r="1.5"/>
-              <circle cx="20" cy="5" r="1.5"/>
-              <circle cx="20" cy="19" r="1.5"/>
-              <path d="M5.5 6 L10 11"/>
-              <path d="M5.5 18 L10 13"/>
-              <path d="M18.5 6 L14 11"/>
-              <path d="M18.5 18 L14 13"/>
-            </svg>
+            <svg class="ico" viewBox="0 0 24 24"><use href="#i-mindmap"/></svg>
           </a>
           {% endif %}
           <button class="rename-btn" data-filename="{{ item.filename }}"
                   title="改標題（不改檔名）"
                   onclick="event.stopPropagation(); startRename(this)">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-                 stroke="currentColor" stroke-width="1.8"
-                 stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 20h9"/>
-              <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>
-            </svg>
+            <svg class="ico" viewBox="0 0 24 24"><use href="#i-rename"/></svg>
           </button>
           <button class="hide-btn" data-filename="{{ item.filename }}"
                   title="隱藏 / 取消隱藏這篇"
                   onclick="event.stopPropagation(); toggleHideCard(this)">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-                 stroke="currentColor" stroke-width="1.8"
-                 stroke-linecap="round" stroke-linejoin="round">
-              <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
-              <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
-              <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/>
-              <line x1="1" y1="1" x2="23" y2="23"/>
-            </svg>
+            <svg class="ico" viewBox="0 0 24 24"><use href="#i-hide"/></svg>
           </button>
           <button class="delete-btn" data-filename="{{ item.filename }}"
                   title="刪除（移到回收區，可復原）"
                   onclick="event.stopPropagation(); deleteCard(this)">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-                 stroke="currentColor" stroke-width="1.8"
-                 stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="3 6 5 6 21 6"/>
-              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-              <line x1="10" y1="11" x2="10" y2="17"/>
-              <line x1="14" y1="11" x2="14" y2="17"/>
-            </svg>
+            <svg class="ico" viewBox="0 0 24 24"><use href="#i-delete"/></svg>
           </button>
           </div>
           <button class="menu-btn" title="更多操作（快捷鍵）"
                   onclick="event.stopPropagation(); toggleActions(this)">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-              <circle cx="5" cy="12" r="1.7"/>
-              <circle cx="12" cy="12" r="1.7"/>
-              <circle cx="19" cy="12" r="1.7"/>
-            </svg>
+            <svg class="ico ico-fill" viewBox="0 0 24 24"><use href="#i-menu"/></svg>
           </button>
           <span class="card-arrow">▸</span>
         </div>
@@ -1454,6 +1458,7 @@ function renderChallengeFeedback(data) {
   fb.classList.add('visible');
 }
 
+
 // Esc 關閉 modal（任一個）
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
@@ -1692,19 +1697,7 @@ function renderCards(summaries) {
       const mindmapBtnHtml = item.markmap_url
         ? `<a href="${esc(item.markmap_url)}" target="_blank" class="mindmap-btn"
               title="開心智圖" onclick="event.stopPropagation()">
-             <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-                  stroke="currentColor" stroke-width="1.8"
-                  stroke-linecap="round" stroke-linejoin="round">
-               <circle cx="12" cy="12" r="2"/>
-               <circle cx="4" cy="5" r="1.5"/>
-               <circle cx="4" cy="19" r="1.5"/>
-               <circle cx="20" cy="5" r="1.5"/>
-               <circle cx="20" cy="19" r="1.5"/>
-               <path d="M5.5 6 L10 11"/>
-               <path d="M5.5 18 L10 13"/>
-               <path d="M18.5 6 L14 11"/>
-               <path d="M18.5 18 L14 13"/>
-             </svg>
+             <svg class="ico" viewBox="0 0 24 24"><use href="#i-mindmap"/></svg>
            </a>`
         : '';
 
@@ -1712,90 +1705,49 @@ function renderCards(summaries) {
               data-filename="${esc(item.filename)}"
               title="考自己（合上摘要 active recall）"
               onclick="event.stopPropagation(); openChallenge(this.dataset.filename)">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-                 stroke="currentColor" stroke-width="1.8"
-                 stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="9"/>
-              <path d="M9.5 9a2.5 2.5 0 1 1 4 2c-.8.8-1.5 1.3-1.5 2.5"/>
-              <line x1="12" y1="17" x2="12" y2="17.01"/>
-            </svg>
+            <svg class="ico" viewBox="0 0 24 24"><use href="#i-challenge"/></svg>
           </button>`;
 
       const logicBtnHtml = `<button class="logic-btn"
               data-filename="${esc(item.filename)}"
               title="邏輯拆解（第一性原理推導鏈 × 多視角壓力測試）"
               onclick="event.stopPropagation(); openLogic(this.dataset.filename)">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-                 stroke="currentColor" stroke-width="1.8"
-                 stroke-linecap="round" stroke-linejoin="round">
-              <line x1="6" y1="3" x2="6" y2="15"/>
-              <circle cx="18" cy="6" r="3"/>
-              <circle cx="6" cy="18" r="3"/>
-              <path d="M18 9a9 9 0 0 1-9 9"/>
-            </svg>
+            <svg class="ico" viewBox="0 0 24 24"><use href="#i-logic"/></svg>
           </button>`;
 
       const digestBtnHtml = `<button class="digest-btn"
               data-filename="${esc(item.filename)}"
               title="乾貨摘要（30 秒 catch up · 帶時間戳 beats）"
               onclick="event.stopPropagation(); openDigest(this.dataset.filename)">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-                 stroke="currentColor" stroke-width="1.8"
-                 stroke-linecap="round" stroke-linejoin="round">
-              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-            </svg>
+            <svg class="ico" viewBox="0 0 24 24"><use href="#i-digest"/></svg>
           </button>`;
 
       const introBtnHtml = `<button class="intro-btn"
               data-filename="${esc(item.filename)}"
               title="導讀（線性帶入）"
               onclick="event.stopPropagation(); openIntro(this.dataset.filename)">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-                 stroke="currentColor" stroke-width="1.8"
-                 stroke-linecap="round" stroke-linejoin="round">
-              <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
-              <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
-            </svg>
+            <svg class="ico" viewBox="0 0 24 24"><use href="#i-intro"/></svg>
           </button>`;
 
       const renameBtnHtml = `<button class="rename-btn"
               data-filename="${esc(item.filename)}"
               title="改標題（不改檔名）"
               onclick="event.stopPropagation(); startRename(this)">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-                 stroke="currentColor" stroke-width="1.8"
-                 stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 20h9"/>
-              <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>
-            </svg>
+            <svg class="ico" viewBox="0 0 24 24"><use href="#i-rename"/></svg>
           </button>`;
 
       const hideBtnHtml = `<button class="hide-btn"
               data-filename="${esc(item.filename)}"
               title="隱藏 / 取消隱藏這篇"
               onclick="event.stopPropagation(); toggleHideCard(this)">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-                 stroke="currentColor" stroke-width="1.8"
-                 stroke-linecap="round" stroke-linejoin="round">
-              <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
-              <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
-              <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/>
-              <line x1="1" y1="1" x2="23" y2="23"/>
-            </svg>
+            <svg class="ico" viewBox="0 0 24 24"><use href="#i-hide"/></svg>
           </button>`;
 
       const deleteBtnHtml = `<button class="delete-btn"
               data-filename="${esc(item.filename)}"
               title="刪除（移到回收區，可復原）"
               onclick="event.stopPropagation(); deleteCard(this)">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-                 stroke="currentColor" stroke-width="1.8"
-                 stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="3 6 5 6 21 6"/>
-              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-              <line x1="10" y1="11" x2="10" y2="17"/>
-              <line x1="14" y1="11" x2="14" y2="17"/>
-            </svg>
+            <svg class="ico" viewBox="0 0 24 24"><use href="#i-delete"/></svg>
           </button>`;
 
       const pitchHtml = item.elevator_pitch
@@ -1827,11 +1779,7 @@ function renderCards(summaries) {
             </div>
             <button class="menu-btn" title="更多操作（快捷鍵）"
                     onclick="event.stopPropagation(); toggleActions(this)">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                <circle cx="5" cy="12" r="1.7"/>
-                <circle cx="12" cy="12" r="1.7"/>
-                <circle cx="19" cy="12" r="1.7"/>
-              </svg>
+              <svg class="ico ico-fill" viewBox="0 0 24 24"><use href="#i-menu"/></svg>
             </button>
             <span class="card-arrow">▸</span>
           </div>

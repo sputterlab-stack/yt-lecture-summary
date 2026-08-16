@@ -6,13 +6,18 @@
   python recategorize.py --apply          # 實際寫入
   python recategorize.py --file <檔名.md> # 只跑單篇（強制 dry-run）
 """
+from __future__ import annotations  # 型別註解不在載入時求值（OpenAI 改成延後 import）
+
 import argparse
 import json
 import re
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from openai import OpenAI
 
 import yaml
-from openai import OpenAI
 
 from config import DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, DEEPSEEK_MODEL, require_api_key
 from prompts import TAXONOMY_TEXT
@@ -186,6 +191,8 @@ def main():
     args = parser.parse_args()
 
     require_api_key()
+    from openai import OpenAI  # 只在真的要呼叫 API 時載入（見 transcriber.py 的邊界說明）
+
     client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
     taxonomy_cfg = load_taxonomy()
     dry_run = not args.apply or bool(args.file)

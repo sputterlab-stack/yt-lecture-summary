@@ -6,6 +6,8 @@
 #   GET  /tasks             -> 所有 task 狀態（多工 polling 用）
 #   GET  /api/summaries     -> JSON list of all summaries (post-batch reload)
 
+from __future__ import annotations  # 型別註解不在載入時求值（OpenAI 改成延後 import）
+
 import html
 import json
 import os
@@ -18,10 +20,13 @@ import traceback
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from openai import OpenAI
 
 import yaml
 from flask import Flask, jsonify, render_template, request
-from openai import OpenAI
 
 import config  # noqa: F401（為了 .env 載入副作用）
 import summarizer
@@ -511,6 +516,8 @@ def _get_deepseek_client() -> OpenAI:
     if _DEEPSEEK_CLIENT is None:
         with _DEEPSEEK_CLIENT_LOCK:
             if _DEEPSEEK_CLIENT is None:
+                from openai import OpenAI  # 只在真的要呼叫 API 時載入
+
                 _DEEPSEEK_CLIENT = OpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
     return _DEEPSEEK_CLIENT
 

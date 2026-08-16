@@ -5,13 +5,14 @@ title YT Lecture Summary - Web UI
 cd /d "%~dp0"
 
 if not exist "%~dp0venv\Scripts\python.exe" (
-    echo [錯誤] 找不到 venv，請先雙擊 setup.bat
+    echo [ERROR] venv not found. Please double-click setup.bat first.
     pause
     exit /b 1
 )
 
 echo Starting web server (close this window to stop)...
-start "" http://localhost:5000
+rem Open the browser only after the port answers - see wait_and_open.py
+start "" /b "%~dp0venv\Scripts\python.exe" -u wait_and_open.py
 "%~dp0venv\Scripts\python.exe" -u web_server.py
 
 pause

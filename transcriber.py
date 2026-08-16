@@ -13,9 +13,11 @@ from config import FFMPEG_DIR
 if FFMPEG_DIR:
     os.environ["PATH"] = FFMPEG_DIR + os.pathsep + os.environ.get("PATH", "")
 
-import torch
-import whisper
-import yt_dlp
+# torch / whisper / yt_dlp 刻意「不」在模組頂層 import。
+# 它們只在轉檔時用得到，但 import torch 本身要 2.5 秒以上；而 web_server 只是
+# 要顯示既有摘要清單也會被迫付這筆錢（summarizer.py 也 import 本模組，所以
+# 光延後 web_server 的 import 沒有用 —— 邊界要畫在唯一真正用到它們的地方）。
+# 載入點：torch/whisper → get_whisper_model()；yt_dlp → download_audio()。
 
 
 _TEMP_PREFIX_BASE = f"temp_audio_download_{os.getpid()}"
@@ -53,6 +55,9 @@ WHISPER_TRANSCRIBE_LOCK = threading.Lock()  # transcribe 階段全域串行（GP
 def get_whisper_model(model_size: str = "base"):
     """Lazy load + cache。多 thread 安全。"""
     global _WHISPER_MODEL, _WHISPER_MODEL_KEY
+    import torch
+    import whisper
+
     device = "cuda" if torch.cuda.is_available() else "cpu"
     key = (model_size, device)
 
@@ -104,6 +109,8 @@ def download_audio(
     prefix: 暫存檔前綴（不含副檔名）。多 thread 並行時必須傳唯一值避免互蓋。
             None 時用 process-level prefix（單一 CLI 模式）。
     """
+    import yt_dlp
+
     use_prefix = prefix if prefix is not None else _TEMP_PREFIX_BASE
     ydl_opts = {
         "format": "bestaudio/best",

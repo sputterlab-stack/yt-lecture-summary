@@ -8,14 +8,14 @@ def _yaml_quote(s: str) -> str:
     """Safely encode a string as a YAML double-quoted scalar (handles ':, '\"', \\n)."""
     return json.dumps(str(s), ensure_ascii=False)
 
-from openai import OpenAI
-
 from config import DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, DEEPSEEK_MODEL
 from prompts import SYSTEM_PROMPT, USER_PROMPT_TEMPLATE
 from transcriber import format_srt_timestamp
 
 
 def first_principles_summary(transcript_text, language, source_meta):
+    from openai import OpenAI  # 只在真的要呼叫 API 時載入（見 transcriber.py 的邊界說明）
+
     client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
     user_content = USER_PROMPT_TEMPLATE.format(
         yt_title=source_meta["yt_title"],

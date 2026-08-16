@@ -8,12 +8,16 @@
   python enrich_logic.py --file <檔名.md>    # 單篇 dry-run
   python enrich_logic.py --apply --force     # 強制重產（覆蓋既有）
 """
+from __future__ import annotations  # 型別註解不在載入時求值（OpenAI 改成延後 import）
+
 import argparse
 import re
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from openai import OpenAI
+if TYPE_CHECKING:
+    from openai import OpenAI
 
 from config import DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, DEEPSEEK_MODEL, require_api_key
 from enrich_intro import extract_breakdown  # 共用 8 段拆解抽取邏輯
@@ -120,6 +124,8 @@ def main():
         pass
 
     require_api_key()
+    from openai import OpenAI  # 只在真的要呼叫 API 時載入（見 transcriber.py 的邊界說明）
+
     client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
     taxonomy_cfg = load_taxonomy()
     skip_files = set(taxonomy_cfg.get("skip_files") or [])
