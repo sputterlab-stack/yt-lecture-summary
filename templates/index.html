@@ -212,30 +212,34 @@
       line-height: 1.7;
     }
     .search-hint b { color: #1a6bc4; font-weight: 600; }
-    .btn-show-hidden {
-      padding: 6px 12px;
-      font-size: 0.82em;
-      border: 1px solid #d1d5db;
-      border-radius: 20px;
+    /* 標籤列預設收起（829 個標籤攤開會蓋掉整個首頁） */
+    .tag-toggle {
       background: #fff;
-      color: #6b7280;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-size: 0.85em;
+      color: #374151;
       cursor: pointer;
       white-space: nowrap;
     }
-    .btn-show-hidden:hover { background: #f3f4f6; }
-    .btn-show-hidden.active {
-      background: #fef3c7;
-      border-color: #f59e0b;
-      color: #92400e;
-      font-weight: 600;
-    }
+    .tag-toggle:hover { background: #f3f4f6; }
+    .tag-toggle-arrow { display: inline-block; transition: transform 0.15s; }
+    .filter-bar.tags-open .tag-toggle-arrow { transform: rotate(90deg); }
+    .tag-active-hint { font-size: 0.82em; color: #1a6bc4; font-weight: 600; }
     .tag-filter-wrap {
-      display: flex;
+      display: none;
       flex-wrap: wrap;
       gap: 6px;
       align-items: center;
-      flex: 2;
+      flex-basis: 100%;
+      margin-top: 10px;
     }
+    .filter-bar.tags-open .tag-filter-wrap { display: flex; }
+    /* 只出現在一篇的標籤（91.2%）預設不顯示——它篩出來就只有那一張卡，
+       用搜尋框打字一樣找得到。要看全部按「顯示全部」。 */
+    .tag-rare { display: none; }
+    .filter-bar.rare-open .tag-rare { display: inline; }
     .tag-chip {
       padding: 4px 10px;
       border: 1px solid #d1d5db;
@@ -548,24 +552,12 @@
     .delete-btn:hover { background: #fef2f2; color: #dc2626; }
     .card.archived .hide-btn { color: #f59e0b; }
 
-    /* 已隱藏卡片：是否顯示由 applyFilter 控制（.hidden）；這裡只給「有顯示時」的淡化虛線樣式 */
+    /* 收摺的卡片不出現在主網格（applyFilter 加 .hidden），它在頁面下方的已收摺區裡 */
     .card.archived {
       opacity: 0.6;
       border-style: dashed;
       background: #fafafa;
     }
-    .card-hidden-badge {
-      display: none;
-      font-size: 0.72em;
-      font-weight: 600;
-      color: #b45309;
-      background: #fef3c7;
-      border-radius: 10px;
-      padding: 1px 8px;
-      margin-left: 6px;
-      white-space: nowrap;
-    }
-    body.show-hidden .card.archived .card-hidden-badge { display: inline-block; }
 
     /* 標題行內編輯 */
     .title-edit-wrap {
@@ -745,6 +737,63 @@
     }
     .no-results.visible { display: block; }
 
+    /* 已收摺區：收摺 ≠ 消失。原本「隱藏」按下去卡片就不見了，
+       取回的按鈕還藏在搜尋框裡、而且 0 篇時完全不顯示 → 使用者找不到。 */
+    .folded-panel {
+      display: none;
+      margin: 24px 0 8px;
+      border: 1px dashed #d1d5db;
+      border-radius: 10px;
+      background: #fafafa;
+    }
+    .folded-panel.has-items { display: block; }
+    .folded-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      cursor: pointer;
+      font-size: 0.9em;
+      color: #4b5563;
+    }
+    .folded-arrow { display: inline-block; transition: transform 0.15s; }
+    .folded-panel.open .folded-arrow { transform: rotate(90deg); }
+    .folded-hint { color: #9ca3af; font-size: 0.9em; }
+    .folded-restore-all {
+      margin-left: auto;
+      background: #fff;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 0.85em;
+      color: #374151;
+      cursor: pointer;
+    }
+    .folded-restore-all:hover { background: #f3f4f6; }
+    .folded-list { display: none; padding: 0 14px 12px; }
+    .folded-panel.open .folded-list { display: block; }
+    .folded-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 7px 0;
+      border-top: 1px solid #eef0f2;
+      font-size: 0.9em;
+      color: #374151;
+    }
+    .folded-item span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .folded-item button {
+      background: #e0ecfb;
+      border: 1px solid #bfdbfe;
+      border-radius: 6px;
+      padding: 4px 12px;
+      font-size: 0.9em;
+      color: #1a6bc4;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .folded-item button:hover { background: #cfe3fa; }
+
     /* 卡片圖示：幾何形狀只在下方 sprite 定義一次，卡片內用 <use> 引用。
        改前每張卡片內嵌 8-9 份完整 SVG（163 張 = 1,398 份），佔了首頁 HTML 的 44.7%。 */
     .ico { width: 20px; height: 20px; fill: none; stroke: currentColor;
@@ -855,21 +904,26 @@
            placeholder="搜尋演講…輸入標題、講者或標籤的關鍵字即時篩選"
            autocomplete="off"
            oninput="applyFilter()" />
-    <button class="btn-show-hidden" id="btn-show-hidden"
-            onclick="toggleShowHidden()" style="display:none;">顯示已隱藏 (0)</button>
   </div>
   <div class="search-hint">
-    💡 即時篩選：關鍵字會比對<b>標題</b>、<b>講者</b>、<b>標籤</b>；點下方標籤可<b>疊加</b>篩選。每張卡片右側「⋯」可<b>改標題</b>、<b>隱藏</b>或<b>刪除</b>。
+    💡 即時篩選：關鍵字會比對<b>標題</b>、<b>講者</b>、<b>標籤</b>；點標籤可<b>疊加</b>篩選。每張卡片右側「⋯」可<b>改標題</b>、<b>收摺</b>或<b>刪除</b>；收摺的會進到頁面最下方的<b>已收摺區</b>，隨時取回。
   </div>
 </div>
 
-<!-- Filter bar (tag chips) -->
+<!-- Filter bar (tag chips)：預設收起。829 個標籤有 91.2% 只出現在一篇，
+     全部攤開會蓋掉首頁，而且那種標籤搜尋框打字就找得到。 -->
 <div class="filter-bar">
+  <button class="tag-toggle" id="tag-toggle" onclick="toggleTagBar()">
+    🏷 標籤篩選 <span class="tag-toggle-arrow">▸</span>
+  </button>
+  <span class="tag-active-hint" id="tag-active-hint"></span>
   <div class="tag-filter-wrap" id="tag-chips">
-    {% for tag in all_tags %}
-    <span class="tag-chip" data-tag="{{ tag }}" onclick="toggleTag(this)">{{ tag }}</span>
+    {% for t in all_tags %}
+    <span class="tag-chip{% if t.count < 2 %} tag-rare{% endif %}"
+          data-tag="{{ t.tag }}" onclick="toggleTag(this)">{{ t.tag }}{% if t.count > 1 %} <b>{{ t.count }}</b>{% endif %}</span>
     {% endfor %}
     <button class="btn-clear" onclick="clearFilter()">清除過濾</button>
+    <button class="btn-clear" id="btn-show-rare" onclick="toggleRareTags()"></button>
   </div>
 </div>
 
@@ -887,7 +941,6 @@
          data-tags="{{ item.tags | join(',') }}">
       <div class="card-header" onclick="toggleCard(this)">
         <span class="card-title-text">{{ item.display_title }}</span>
-        <span class="card-hidden-badge">已隱藏</span>
         <div class="card-actions">
           <div class="card-quick-actions">
           <button class="logic-btn" data-filename="{{ item.filename }}"
@@ -922,7 +975,7 @@
             <svg class="ico" viewBox="0 0 24 24"><use href="#i-rename"/></svg>
           </button>
           <button class="hide-btn" data-filename="{{ item.filename }}"
-                  title="隱藏 / 取消隱藏這篇"
+                  title="收摺這篇（可在頁面下方的已收摺區取回）"
                   onclick="event.stopPropagation(); toggleHideCard(this)">
             <svg class="ico" viewBox="0 0 24 24"><use href="#i-hide"/></svg>
           </button>
@@ -977,6 +1030,17 @@
 </div>
 
 <div class="no-results" id="no-results">沒有符合的摘要</div>
+
+<!-- 已收摺區：收摺的演講不會消失，一律落到這裡，可逐篇或一次全部取回 -->
+<div class="folded-panel" id="folded-panel">
+  <div class="folded-head" onclick="toggleFoldedPanel()">
+    <span class="folded-arrow">▸</span>
+    <span>📁 已收摺 <b id="folded-count">0</b> 篇</span>
+    <span class="folded-hint">（點開可取回）</span>
+    <button class="folded-restore-all" onclick="event.stopPropagation(); restoreAllFolded()">全部取回</button>
+  </div>
+  <div class="folded-list" id="folded-list"></div>
+</div>
 
 <!-- Intro Modal（線性導讀）-->
 <div class="modal-overlay" id="intro-modal"
@@ -1050,6 +1114,7 @@ function toggleTag(el) {
     activeTags.add(tag);
     el.classList.add('active');
   }
+  updateTagBarHint();
   applyFilter();
 }
 
@@ -1057,7 +1122,37 @@ function clearFilter() {
   activeTags.clear();
   document.querySelectorAll('.tag-chip.active').forEach(c => c.classList.remove('active'));
   document.getElementById('filter-search').value = '';
+  updateTagBarHint();
   applyFilter();
+}
+
+// ── 標籤列收合 ──────────────────────────────────────────────────────────────
+function toggleTagBar() {
+  document.querySelector('.filter-bar').classList.toggle('tags-open');
+  updateTagBarHint();
+}
+
+function toggleRareTags() {
+  document.querySelector('.filter-bar').classList.toggle('rare-open');
+  updateTagBarHint();
+}
+
+// 收起狀態下也要看得出「現在有沒有在用標籤篩選」，否則會以為畫面壞了
+function updateTagBarHint() {
+  const bar = document.querySelector('.filter-bar');
+  const hint = document.getElementById('tag-active-hint');
+  if (hint) {
+    hint.textContent = activeTags.size
+      ? '篩選中：' + [...activeTags].join('、')
+      : '';
+  }
+  const btn = document.getElementById('btn-show-rare');
+  if (btn) {
+    const rare = document.querySelectorAll('.tag-chip.tag-rare').length;
+    const open = bar.classList.contains('rare-open');
+    btn.textContent = open ? '只看常用標籤' : `顯示全部（含 ${rare} 個單篇標籤）`;
+    btn.style.display = rare ? '' : 'none';
+  }
 }
 
 // ── Card collapse / expand ────────────────────────────────────────────────
@@ -1072,7 +1167,9 @@ function toggleActions(btnEl) {
   card.classList.toggle('actions-open');
 }
 
-// ── 隱藏 / 取消隱藏（localStorage，純前端，不動檔案）──────────────────────
+// ── 收摺 / 取回（localStorage，純前端，不動檔案）─────────────────────────
+// 收摺 ≠ 消失：收摺的演講一律出現在頁面最下方的「已收摺區」，可逐篇或全部取回。
+// key 沿用 yt_hidden_v1，所以之前已經隱藏的篇章會自動出現在收摺區裡，不會遺失。
 const HIDDEN_KEY = 'yt_hidden_v1';
 
 function getHiddenSet() {
@@ -1084,13 +1181,13 @@ function saveHiddenSet(set) {
   localStorage.setItem(HIDDEN_KEY, JSON.stringify([...set]));
 }
 
-// 依 localStorage 把對應卡片標上/移除 .archived，再更新計數與篩選
+// 依 localStorage 把對應卡片標上/移除 .archived，再重建收摺區與篩選
 function applyHiddenState() {
   const set = getHiddenSet();
   document.querySelectorAll('.card').forEach(card => {
     card.classList.toggle('archived', set.has(card.dataset.filename || ''));
   });
-  updateHiddenToggle();
+  renderFoldedPanel();
   applyFilter();
 }
 
@@ -1103,20 +1200,51 @@ function toggleHideCard(btnEl) {
   applyHiddenState();
 }
 
-function updateHiddenToggle() {
-  const btn = document.getElementById('btn-show-hidden');
-  if (!btn) return;
-  const n = document.querySelectorAll('.card.archived').length;
-  const on = document.body.classList.contains('show-hidden');
-  btn.textContent = (on ? '隱藏已隱藏項 ' : '顯示已隱藏 ') + '(' + n + ')';
-  btn.style.display = n > 0 ? '' : 'none';
+function restoreFolded(filename) {
+  const set = getHiddenSet();
+  set.delete(filename);
+  saveHiddenSet(set);
+  applyHiddenState();
 }
 
-function toggleShowHidden() {
-  const on = document.body.classList.toggle('show-hidden');
-  document.getElementById('btn-show-hidden').classList.toggle('active', on);
-  updateHiddenToggle();
-  applyFilter();
+function restoreAllFolded() {
+  saveHiddenSet(new Set());
+  applyHiddenState();
+}
+
+function toggleFoldedPanel() {
+  document.getElementById('folded-panel').classList.toggle('open');
+}
+
+// 收摺區的內容一律由目前 DOM 上的 .card.archived 重建（轉檔後重繪也適用）
+function renderFoldedPanel() {
+  const panel = document.getElementById('folded-panel');
+  const list = document.getElementById('folded-list');
+  if (!panel || !list) return;
+
+  const cards = [...document.querySelectorAll('.card.archived')];
+  document.getElementById('folded-count').textContent = cards.length;
+  panel.classList.toggle('has-items', cards.length > 0);
+  if (!cards.length) {
+    panel.classList.remove('open');
+    list.innerHTML = '';
+    return;
+  }
+
+  list.innerHTML = '';
+  cards.forEach(card => {
+    const name = card.dataset.filename || '';
+    const row = document.createElement('div');
+    row.className = 'folded-item';
+    const label = document.createElement('span');
+    label.textContent = card.dataset.title || name;
+    const btn = document.createElement('button');
+    btn.textContent = '取回';
+    btn.onclick = function() { restoreFolded(name); };
+    row.appendChild(label);
+    row.appendChild(btn);
+    list.appendChild(row);
+  });
 }
 
 // ── 刪除（移到回收區，可復原）──────────────────────────────────────────────
@@ -1136,7 +1264,7 @@ function deleteCard(btnEl) {
       if (set.delete(filename)) saveHiddenSet(set);
       card.remove();
       recountAndCleanup();
-      updateHiddenToggle();
+      renderFoldedPanel();
       applyFilter();
     })
     .catch(e => alert('網路錯誤：' + e));
@@ -1235,7 +1363,6 @@ function commitRename(card, filename, newTitle, oldTitle) {
 function applyFilter() {
   const q = document.getElementById('filter-search').value.toLowerCase().trim();
   const cards = document.querySelectorAll('.card');
-  const showHidden = document.body.classList.contains('show-hidden');
   let visibleCount = 0;
 
   cards.forEach(card => {
@@ -1249,8 +1376,8 @@ function applyFilter() {
     const matchTags = activeTags.size === 0
       || [...activeTags].some(t => tags.includes(t.toLowerCase()));
 
-    // 已隱藏的卡片只有在「顯示已隱藏」開啟時才參與顯示
-    const passArchive = !card.classList.contains('archived') || showHidden;
+    // 收摺的卡片不出現在主網格；它們在頁面最下方的「已收摺區」裡，可隨時取回
+    const passArchive = !card.classList.contains('archived');
 
     if (matchText && matchTags && passArchive) {
       card.classList.remove('hidden');
@@ -1786,7 +1913,7 @@ function renderCards(summaries) {
   container.innerHTML = '';
 
   // Collect all tags for chip rebuild
-  const allTagsSet = new Set();
+  const tagCounts = new Map();  // 標籤 -> 篇數（決定哪些是「常用」、哪些收進「顯示全部」）
 
   order.forEach(cat => {
     const items = grouped[cat].sort((a,b) =>
@@ -1806,7 +1933,7 @@ function renderCards(summaries) {
 
     items.forEach(item => {
       const tags = item.tags || [];
-      tags.forEach(t => allTagsSet.add(t));
+      tags.forEach(t => tagCounts.set(t, (tagCounts.get(t) || 0) + 1));
       const card = document.createElement('div');
       card.className = 'card';
       card.dataset.filename = item.filename || '';
@@ -1858,7 +1985,7 @@ function renderCards(summaries) {
 
       const hideBtnHtml = `<button class="hide-btn"
               data-filename="${esc(item.filename)}"
-              title="隱藏 / 取消隱藏這篇"
+              title="收摺這篇（可在頁面下方的已收摺區取回）"
               onclick="event.stopPropagation(); toggleHideCard(this)">
             <svg class="ico" viewBox="0 0 24 24"><use href="#i-hide"/></svg>
           </button>`;
@@ -1888,8 +2015,7 @@ function renderCards(summaries) {
       card.innerHTML = `
         <div class="card-header" onclick="toggleCard(this)">
           <span class="card-title-text">${esc(item.display_title || item.filename)}</span>
-          <span class="card-hidden-badge">已隱藏</span>
-          <div class="card-actions">
+            <div class="card-actions">
             <div class="card-quick-actions">
               ${logicBtnHtml}
               ${digestBtnHtml}
@@ -1927,7 +2053,7 @@ function renderCards(summaries) {
   });
 
   // Rebuild tag chips
-  rebuildTagChips([...allTagsSet].sort());
+  rebuildTagChips(tagCounts);
 
   // 重新標記隱藏狀態（重繪後卡片是全新的）並套用篩選
   applyHiddenState();
@@ -1945,20 +2071,25 @@ function esc(str) {
     .replace(/"/g, '&quot;');
 }
 
-function rebuildTagChips(tags) {
+// 必須跟 Jinja 那條路徑排出一樣的東西：依篇數由多到少，單篇標籤加 .tag-rare 收起來
+function rebuildTagChips(tagCounts) {
   const wrap = document.getElementById('tag-chips');
-  // Keep the clear button
-  const clearBtn = wrap.querySelector('.btn-clear');
+  const buttons = [...wrap.querySelectorAll('.btn-clear')];  // 清除過濾 + 顯示全部
   wrap.innerHTML = '';
-  tags.forEach(tag => {
-    const chip = document.createElement('span');
-    chip.className = 'tag-chip' + (activeTags.has(tag) ? ' active' : '');
-    chip.dataset.tag = tag;
-    chip.textContent = tag;
-    chip.onclick = function() { toggleTag(this); };
-    wrap.appendChild(chip);
-  });
-  wrap.appendChild(clearBtn);
+  [...tagCounts.entries()]
+    .sort((a, b) => (b[1] - a[1]) || a[0].localeCompare(b[0]))
+    .forEach(([tag, n]) => {
+      const chip = document.createElement('span');
+      chip.className = 'tag-chip'
+        + (activeTags.has(tag) ? ' active' : '')
+        + (n < 2 ? ' tag-rare' : '');
+      chip.dataset.tag = tag;
+      chip.textContent = n > 1 ? `${tag} ${n}` : tag;
+      chip.onclick = function() { toggleTag(this); };
+      wrap.appendChild(chip);
+    });
+  buttons.forEach(b => wrap.appendChild(b));
+  updateTagBarHint();
 }
 </script>
 </body>

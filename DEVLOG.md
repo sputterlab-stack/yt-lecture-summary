@@ -5,6 +5,63 @@
 
 ---
 
+## 2026-08-16（傍晚）— 標籤列收納 ＋「隱藏」改成可取回的「收摺」
+
+### 起因（使用者看完 UI 後的回饋）
+
+> 1. 「首頁搜尋欄底下有一大堆關鍵字 icon，我覺得有點喧賓奪主，應該要收納起來」
+> 2. 「更多操作裡面的隱藏，按了之後似乎沒有 undo 的地方，就會直接消失，這個設計不好。
+>    我是覺得隱藏可以變成類似摺疊這樣，可以去摺疊頁面取回，而不是消失」
+
+### 量到什麼
+
+**標籤**：163 篇共 **829 個不重複標籤**，其中 **91.2% 只出現在一篇**；
+出現 ≥2 篇的只有 73 個、≥3 篇的 27 個、≥5 篇的 6 個。
+→ 那 756 個單篇標籤當 chip **只能篩出一張卡**，和直接打字搜尋完全重疊，
+卻佔滿整個首頁。這不是排版問題，是那些 chip 本來就沒有篩選價值。
+
+**隱藏**：取回的入口其實**早就存在**（`btn-show-hidden`），但它
+①塞在搜尋輸入框裡面 ②`n === 0` 時 `display:none`。
+所以使用者按下隱藏之前根本沒見過它，按下之後也不會注意到它冒出來。
+**這是可發現性壞掉，不是功能缺失**——所以修法是換位置與換模型，不是加功能。
+
+### 改了什麼
+
+- `web_server.py` `index()`：`all_tags` 從 `list[str]` 改成 `[{tag, count}]`，
+  依篇數由多到少排序。
+- `templates/index.html`：
+  - 標籤列**整條預設收起**，改由「🏷 標籤篩選」按鈕展開；收起時若正在用標籤篩選，
+    旁邊顯示「篩選中：X、Y」（否則會以為畫面壞了）。
+  - 展開後**只顯示 ≥2 篇的 73 個**（chip 上帶篇數），單篇標籤加 `.tag-rare` 收起，
+    另有「顯示全部（含 756 個單篇標籤）」開關。
+  - **「隱藏」改名為「收摺」**，語意從「消失」變成「移到別的地方」。
+  - 新增**已收摺區**（頁面最下方）：`📁 已收摺 N 篇`，點開列出每一篇 + 「取回」鈕，
+    另有「全部取回」。沒有收摺任何東西時整區不顯示。
+  - 移除搜尋框裡的 `btn-show-hidden`、`body.show-hidden` 機制、`card-hidden-badge`
+    與其 CSS（都是舊模型的殘留）。
+  - `rebuildTagChips()` 改吃 `Map<tag, count>`，與 Jinja 那條路徑排出相同結果。
+  - localStorage key **沿用 `yt_hidden_v1`**，所以先前已隱藏的篇章會自動出現在收摺區，不會遺失。
+
+### 驗了什麼（SSR 與轉檔後重繪兩條路徑都跑）
+
+標籤：`chipsTotal=829 rare=756 barCollapsed=true shownWhenOpen=73 shownWhenAll=829`
+收摺：`panelHiddenAtStart=true cardGoneFromGrid=true panelVisible=true foldedCount=1
+listRows=1 rowIsTheCard=true afterRestore_cardBack=true afterRestore_panelHidden=true
+stored=2 countAfter2=2 afterRestoreAll_stored=0 afterRestoreAll_panelHidden=true`
+重繪後：`chips=829 rare=756 barStillCollapsed=true clearBtns=2 foldAfterRerender=1 restoredOK=true`
+
+### ⚠️ 一個要記錄的意外
+
+驗收時發現 `outputs/summaries/王虹邓煜菲尔兹奖与挂谷猜想解读.md` 的 sha256 與當天基準不同：
+該檔在 **15:17:45** 多了一段 `## 融會貫通`（內容完整正常）。
+**不是本次改動造成的**——當時沒有任何驗收腳本在跑，而且
+`templates/index.html` 對 synthesis 的提及次數是 0、`catchup.html` 只顯示不產生，
+**瀏覽器上沒有任何路徑會寫這一段**，只能是命令列跑 `enrich_synthesis.py` 產生的。
+本次所有程式改動都只讀不寫（`split_body` / `extract_essence` 是純函式，
+`collect_summaries` 只 `read_text`）。已重新取基準。
+
+---
+
 ## 2026-08-16（下午）— 入口收斂版：把早就寫好卻沒接上的「精粹」接到卡片上
 
 ### 起因（使用者當天稍晚的裁示，推翻同日早上的排序）

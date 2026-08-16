@@ -411,7 +411,17 @@ def serve_markmap(filename: str):
 def index():
     entries = collect_summaries()
     groups = group_summaries(entries)
-    all_tags: list[str] = sorted({t for e in entries for t in e["tags"]})
+    # 標籤帶篇數：163 篇共 829 個不重複標籤，其中 91.2% 只出現在一篇——
+    # 那種 chip 只能篩出一張卡，跟直接打字搜尋重疊，卻佔滿整個首頁。
+    # 所以前端預設只顯示 >=2 篇的（73 個），其餘收在「顯示全部」後面。
+    counts: dict[str, int] = {}
+    for e in entries:
+        for t in e["tags"]:
+            counts[t] = counts.get(t, 0) + 1
+    all_tags = [
+        {"tag": t, "count": n}
+        for t, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    ]
     return render_template(
         "index.html",
         groups=groups,
