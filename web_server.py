@@ -115,36 +115,76 @@ TOTAL_STEPS = len(TASK_STEP_NAMES)
 # Frontmatter / content helpers
 # ---------------------------------------------------------------------------
 
-def parse_frontmatter(path: Path) -> dict:
-    try:
-        text = path.read_text(encoding="utf-8")
-    except Exception:
-        return {}
+def split_body(text: str) -> tuple[dict, str]:
+    """一次讀進來的檔案內容 → (frontmatter dict, body)。
+
+    以前 parse_frontmatter / extract_elevator_pitch 各自 read_text 一次，
+    加上精粹抽取就會變成同一個檔讀三遍（163 篇 = 489 次）。改成讀一次傳下去。
+    """
     if not text.startswith("---"):
-        return {}
+        return {}, text
     end = text.find("---", 3)
     if end == -1:
-        return {}
+        return {}, text
     try:
-        return yaml.safe_load(text[3:end]) or {}
+        fm = yaml.safe_load(text[3:end]) or {}
     except yaml.YAMLError:
-        return {}
+        fm = {}
+    return (fm if isinstance(fm, dict) else {}), text[end + 3:]
 
 
-def extract_elevator_pitch(path: Path) -> str:
-    try:
-        text = path.read_text(encoding="utf-8")
-    except Exception:
-        return ""
-    if text.startswith("---"):
-        end = text.find("---", 3)
-        if end != -1:
-            text = text[end + 3:]
-    for line in text.splitlines():
+def extract_elevator_pitch(body: str) -> str:
+    for line in body.splitlines():
         stripped = line.strip()
         if stripped.startswith(">"):
             return stripped.lstrip("> ").strip()
     return ""
+
+
+# ── 精粹（30 秒閱讀層）─────────────────────────────────────────────────────
+# 這一層**不新增任何內容、不呼叫 LLM、不改任何 .md**，只是把每篇裡早就存在的
+# 「## 精選摘要 → ### 核心重點」前 3 點接到 UI 上。
+# 背景：那一段標題字面上寫著「沒時間先看這段」，覆蓋 161/163，中位 588 字，
+# 但它在檔案裡的中位位置是第 3,142 字元，而且前端完全沒有暴露過它。
+# 覆蓋率實測：161 篇取自精選摘要、2 篇退回乾貨摘要的時間戳 beats = 163/163。
+_TOP_HEADING_RE = re.compile(r"^##\s*精選摘要", re.MULTILINE)
+_CORE_POINTS_RE = re.compile(r"^###\s*核心重點\s*$", re.MULTILINE)
+_DIGEST_TOP_RE = re.compile(r"^##\s*乾貨摘要", re.MULTILINE)
+_NEXT_H2_RE = re.compile(r"^##\s", re.MULTILINE)
+_NEXT_H3_RE = re.compile(r"^###\s", re.MULTILINE)
+_NUMBERED_RE = re.compile(r"^\s*\d+\.\s*(.+?)\s*$", re.MULTILINE)
+_BEAT_RE = re.compile(r"^[•\-*]\s*(\[\d{1,2}:\d{2}(?::\d{2})?\].+?)\s*$", re.MULTILINE)
+
+ESSENCE_MAX_POINTS = 3
+
+
+def _section_after(body: str, heading_re, next_re) -> str:
+    """抓某個標題底下到下一個同級標題為止的內容。"""
+    m = heading_re.search(body)
+    if not m:
+        return ""
+    seg = body[m.end():]
+    nxt = next_re.search(seg)
+    return seg[:nxt.start()] if nxt else seg
+
+
+def extract_essence(body: str) -> tuple[list[str], str]:
+    """回 (最多 3 個核心重點, 來源標記)。來源為空字串代表這篇還沒有精粹。"""
+    top = _section_after(body, _TOP_HEADING_RE, _NEXT_H2_RE)
+    if top:
+        core = _section_after(top, _CORE_POINTS_RE, _NEXT_H3_RE)
+        points = _NUMBERED_RE.findall(core)
+        if points:
+            return points[:ESSENCE_MAX_POINTS], "精選摘要"
+
+    # fallback：沒有精選摘要的舊篇章，用乾貨摘要的時間戳 beats 頂上
+    digest = _section_after(body, _DIGEST_TOP_RE, _NEXT_H2_RE)
+    if digest:
+        beats = _BEAT_RE.findall(digest)
+        if beats:
+            return beats[:ESSENCE_MAX_POINTS], "乾貨摘要"
+
+    return [], ""
 
 
 def collect_summaries() -> list[dict]:
@@ -152,12 +192,17 @@ def collect_summaries() -> list[dict]:
     for md in sorted(SUMMARIES_DIR.glob("*.md")):
         if md.name in EXCLUDE:
             continue
-        fm = parse_frontmatter(md)
+        try:
+            text = md.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        fm, body = split_body(text)
         if fm.get("_skip_index"):
             continue
         cat = fm.get("category") or "未分類"
         cat = _ALIASES.get(cat, cat)
         markmap_html = MARKMAP_DIR / (md.stem + ".html")
+        essence_points, essence_source = extract_essence(body)
         entries.append({
             "filename": md.stem,
             "path": md.name,
@@ -172,7 +217,9 @@ def collect_summaries() -> list[dict]:
             "display_title": fm.get("display_title") or md.stem,
             "thesis": fm.get("thesis") or "",
             "weekly_action": fm.get("weekly_action") or "",
-            "elevator_pitch": extract_elevator_pitch(md),
+            "elevator_pitch": extract_elevator_pitch(body),
+            "essence_points": essence_points,
+            "essence_source": essence_source,
             "markmap_url": f"/outputs/markmap/{md.stem}.html" if markmap_html.exists() else None,
         })
     return entries

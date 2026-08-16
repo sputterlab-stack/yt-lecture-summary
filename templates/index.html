@@ -364,11 +364,74 @@
     }
     .card.expanded .card-body { display: flex; }
 
-    .card-pitch {
-      font-size: 0.92em;
-      color: #4b5563;
-      line-height: 1.55;
+    /* 精粹：點開卡片第一眼看到的東西。內容全部來自既有 .md 的
+       「## 精選摘要 → ### 核心重點」前 3 點（2 篇舊檔退回乾貨的時間戳）。
+       不呼叫 LLM、不改任何 .md，只是把早就寫好但 UI 從沒接上的那一層接上。 */
+    .card-essence {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
     }
+    .card-essence li {
+      position: relative;
+      padding-left: 22px;
+      font-size: 0.93em;
+      color: #1f2937;
+      line-height: 1.6;
+    }
+    .card-essence li::before {
+      counter-increment: essence;
+      content: counter(essence);
+      position: absolute;
+      left: 0;
+      top: 2px;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #e0ecfb;
+      color: #1a6bc4;
+      font-size: 0.72em;
+      font-weight: 700;
+      line-height: 16px;
+      text-align: center;
+    }
+    .card-essence { counter-reset: essence; }
+    .card-essence li strong { color: #111827; }
+    .card-essence-none {
+      font-size: 0.88em;
+      color: #b45309;
+      background: #fffbeb;
+      border-left: 3px solid #f59e0b;
+      padding: 7px 10px;
+      border-radius: 3px;
+    }
+    .card-essence-src {
+      font-size: 0.76em;
+      color: #9ca3af;
+    }
+    /* 「深入」：導讀／邏輯拆解／乾貨／考自己／心智圖的唯一入口 */
+    .card-deeper {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.85em;
+      color: #6b7280;
+      border-top: 1px dashed #e5e7eb;
+      padding-top: 8px;
+    }
+    .card-deeper button {
+      background: #f3f4f6;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      padding: 5px 12px;
+      font-size: 1em;
+      color: #374151;
+      cursor: pointer;
+    }
+    .card-deeper button:hover { background: #e5e7eb; }
 
     /* Thesis（核心主張）— 卡片正面顯眼 */
     .card-thesis {
@@ -380,9 +443,10 @@
       border-top: 1px solid #f3f4f6;
       padding-top: 10px;
     }
-    /* Weekly action — 黃色 callout box，emoji 開頭 */
+    /* Weekly action — 黃色 callout box，emoji 開頭。
+       2026-08-16 從卡片正面移進展開層（收合時只留標題＋thesis）。 */
     .card-action {
-      margin: 0 16px 12px;
+      margin: 0;
       padding: 7px 10px;
       background: #fef3c7;
       border-left: 3px solid #f59e0b;
@@ -687,24 +751,7 @@
            stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
     .ico-fill { fill: currentColor; stroke: none; }
 
-    /* 抽考探針：唯一的「主動提取」入口。刻意只用 localStorage 記錄，
-       先量「會不會回訪」，再決定要不要做完整的間隔重複排程。 */
-    .recall-box {
-      display: flex; align-items: center; justify-content: space-between;
-      gap: 16px; flex-wrap: wrap;
-      background: linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%);
-      border: 1px solid #fdba74; border-radius: 12px;
-      padding: 14px 18px; margin: 0 0 18px 0;
-    }
-    .recall-left { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
-    .recall-btn {
-      background: #ea580c; color: #fff; border: none; border-radius: 8px;
-      padding: 10px 18px; font-size: 1em; font-weight: 700; cursor: pointer;
-      white-space: nowrap;
-    }
-    .recall-btn:hover { background: #c2410c; }
-    .recall-hint { color: #9a3412; font-size: 0.88em; }
-    .recall-stat { color: #7c2d12; font-size: 0.88em; font-weight: 600; white-space: nowrap; }
+    /* 考自己 modal 內的自評三鈕（首頁抽考入口已於 2026-08-16 撤除） */
     .selfrate-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
     .selfrate-btn {
       background: #fff; border: 1px solid #d1d5db; border-radius: 8px;
@@ -776,15 +823,6 @@
   <h1>YT 演講摘要 Dashboard</h1>
   <p class="meta">共 {{ total }} 篇 · 第一性原理摘要 + 互動心智圖 · <a href="/catchup" style="color:#c2410c;font-weight:700;text-decoration:none;">🥩 乾貨快讀模式 →</a></p>
 </header>
-
-<!-- 抽考探針（active recall）：整個系統唯一的「主動提取」入口 -->
-<div class="recall-box">
-  <div class="recall-left">
-    <button class="recall-btn" onclick="randomChallenge()">🎯 抽考一篇（約 2 分鐘）</button>
-    <span class="recall-hint">合上摘要，用自己的話講一次核心論點——提取比重讀有效</span>
-  </div>
-  <div class="recall-stat" id="recall-stat"></div>
-</div>
 
 <!-- Convert box -->
 <div class="convert-box">
@@ -904,12 +942,19 @@
       {% if item.thesis %}
       <div class="card-thesis">{{ item.thesis }}</div>
       {% endif %}
-      {% if item.weekly_action %}
-      <div class="card-action">{{ item.weekly_action }}</div>
-      {% endif %}
       <div class="card-body">
-        {% if item.elevator_pitch %}
-        <div class="card-pitch">{{ item.elevator_pitch }}</div>
+        {# 精粹：點開第一眼就是這 3 點，不用再選要看哪一層 #}
+        {% if item.essence_points %}
+        <ul class="card-essence">
+          {% for pt in item.essence_points %}
+          <li>{{ pt }}</li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <div class="card-essence-none">這篇還沒有精粹（缺「精選摘要」與「乾貨摘要」段）</div>
+        {% endif %}
+        {% if item.weekly_action %}
+        <div class="card-action">{{ item.weekly_action }}</div>
         {% endif %}
         <div class="card-meta">{{ item.speaker }} · {{ item.duration }}</div>
         {% if item.tags %}
@@ -919,6 +964,10 @@
           {% endfor %}
         </div>
         {% endif %}
+        <div class="card-deeper">
+          <span>還想深入？</span>
+          <button onclick="event.stopPropagation(); toggleActions(this)">展開工具列</button>
+        </div>
       </div>
     </div>
     {% endfor %}
@@ -1391,7 +1440,6 @@ function reloadCards() {
 // 啟動時若 server 已有未完成 task（refresh 時），自動接手 polling
 window.addEventListener('load', () => {
   applyHiddenState();  // 還原使用者上次隱藏的演講
-  renderRecallStats(); // 抽考探針的 14 天統計
   fetch('/tasks').then(r => r.json()).then(data => {
     const inflight = (data.tasks || []).filter(t =>
       t.status !== 'done' && t.status !== 'error'
@@ -1505,10 +1553,10 @@ function renderChallengeFeedback(data) {
   fb.classList.add('visible');
 }
 
-// ── 抽考探針：只記「做了幾次、用了幾天」，不做 SM-2 排程 ──────────────────
-// 為什麼刻意這麼薄：這個系統已經有七層被動輸入，唯一的主動提取（考自己）打完就丟。
-// 先用最小成本量「使用者會不會真的回來抽考」，14 天內若至少 4 個不同日子有做，
-// 才值得升級成有排程的間隔重複系統。先建整套 SRS 是在賭一個沒量過的習慣。
+// ── 考自己的自評紀錄（localStorage，純前端）────────────────────────────────
+// 2026-08-16：使用者明確表示「學習效果不在抽考環節，重點是易於理解的演說精粹」，
+// 所以首頁的抽考入口已撤除，考自己回到「⋯」工具列裡。這裡只保留「按了自評就記一筆」，
+// 供日後真的要判斷複習習慣時有資料可看；首頁不再顯示任何抽考統計。
 const RECALL_KEY = 'yt_recall_log';
 
 function loadRecallLog() {
@@ -1520,7 +1568,6 @@ function recordRecall(filename, rating) {
   const log = loadRecallLog();
   log.push({filename, rating, completed_at: new Date().toISOString()});
   localStorage.setItem(RECALL_KEY, JSON.stringify(log));
-  renderRecallStats();
 }
 
 function rateRecall(rating) {
@@ -1530,31 +1577,6 @@ function rateRecall(rating) {
   if (row) {
     row.outerHTML = `<div class="selfrate-done">已記錄：${esc(rating)} ✔</div>`;
   }
-}
-
-function renderRecallStats() {
-  const el = document.getElementById('recall-stat');
-  if (!el) return;
-  const cutoff = Date.now() - 14 * 24 * 3600 * 1000;
-  const recent = loadRecallLog().filter(r => {
-    const t = Date.parse(r.completed_at || '');
-    return !isNaN(t) && t >= cutoff;
-  });
-  const days = new Set(recent.map(r => String(r.completed_at).slice(0, 10)));
-  el.textContent = recent.length
-    ? `近 14 天：抽考 ${recent.length} 次 · 用了 ${days.size} 天`
-    : '近 14 天：還沒抽考過';
-}
-
-function randomChallenge() {
-  const cards = [...document.querySelectorAll('.card')]
-    .filter(c => !c.classList.contains('archived'));
-  if (!cards.length) {
-    alert('目前沒有可抽考的篇章');
-    return;
-  }
-  const pick = cards[Math.floor(Math.random() * cards.length)];
-  openChallenge(pick.dataset.filename);
 }
 
 // Esc 關閉 modal（任一個）
@@ -1848,13 +1870,16 @@ function renderCards(summaries) {
             <svg class="ico" viewBox="0 0 24 24"><use href="#i-delete"/></svg>
           </button>`;
 
-      const pitchHtml = item.elevator_pitch
-        ? `<div class="card-pitch">${esc(item.elevator_pitch)}</div>` : '';
-
       const thesisHtml = item.thesis
         ? `<div class="card-thesis">${esc(item.thesis)}</div>` : '';
       const actionHtml = item.weekly_action
         ? `<div class="card-action">${esc(item.weekly_action)}</div>` : '';
+
+      // 精粹：必須跟 Jinja 那條路徑長一樣，否則轉完一篇重畫後兩邊會不一致
+      const pts = item.essence_points || [];
+      const essenceHtml = pts.length
+        ? `<ul class="card-essence">${pts.map(p => `<li>${esc(p)}</li>`).join('')}</ul>`
+        : '<div class="card-essence-none">這篇還沒有精粹（缺「精選摘要」與「乾貨摘要」段）</div>';
 
       const tagsHtml = tags.length
         ? `<div class="card-tags">${tags.map(t => `<span class="card-tag">${esc(t)}</span>`).join('')}</div>`
@@ -1883,11 +1908,15 @@ function renderCards(summaries) {
           </div>
         </div>
         ${thesisHtml}
-        ${actionHtml}
         <div class="card-body">
-          ${pitchHtml}
+          ${essenceHtml}
+          ${actionHtml}
           <div class="card-meta">${esc(item.speaker)} · ${esc(item.duration)}</div>
           ${tagsHtml}
+          <div class="card-deeper">
+            <span>還想深入？</span>
+            <button onclick="event.stopPropagation(); toggleActions(this)">展開工具列</button>
+          </div>
         </div>
       `;
       grid.appendChild(card);
