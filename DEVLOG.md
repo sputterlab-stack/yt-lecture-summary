@@ -50,15 +50,19 @@ listRows=1 rowIsTheCard=true afterRestore_cardBack=true afterRestore_panelHidden
 stored=2 countAfter2=2 afterRestoreAll_stored=0 afterRestoreAll_panelHidden=true`
 重繪後：`chips=829 rare=756 barStillCollapsed=true clearBtns=2 foldAfterRerender=1 restoredOK=true`
 
-### ⚠️ 一個要記錄的意外
+### ⚠️ 驗收時的一個 sha256 差異（已查明，非本次改動）
 
-驗收時發現 `outputs/summaries/王虹邓煜菲尔兹奖与挂谷猜想解读.md` 的 sha256 與當天基準不同：
-該檔在 **15:17:45** 多了一段 `## 融會貫通`（內容完整正常）。
-**不是本次改動造成的**——當時沒有任何驗收腳本在跑，而且
-`templates/index.html` 對 synthesis 的提及次數是 0、`catchup.html` 只顯示不產生，
-**瀏覽器上沒有任何路徑會寫這一段**，只能是命令列跑 `enrich_synthesis.py` 產生的。
-本次所有程式改動都只讀不寫（`split_body` / `extract_essence` 是純函式，
-`collect_summaries` 只 `read_text`）。已重新取基準。
+`outputs/summaries/王虹邓煜菲尔兹奖与挂谷猜想解读.md` 在 **15:17:45** 多了一段
+`## 融會貫通`（內容完整正常）。**是使用者在 `/catchup` 頁點「▶ 生成融會貫通」產生的**
+（`templates/catchup.html:399` 的按鈕 → `genSynthesis()` → `POST /synthesis/<f>/generate`
+→ 寫回 `.md` → `location.reload()`）。本次程式改動全部只讀不寫
+（`split_body` / `extract_essence` 是純函式，`collect_summaries` 只 `read_text`）。已重新取基準。
+
+🔴 **我當下的判斷是錯的，錯法值得記下來**：我先前寫「瀏覽器上沒有任何路徑會寫這一段」，
+根據是 `grep -n "synthesis\|generate" templates/catchup.html | head -12` ——
+**`head -12` 把輸出截斷在 CSS 區塊，真正的 `fetch(... /generate)` 在第 550 / 564 行，
+從沒進到我眼前**，我卻拿這個被截斷的結果下了「不存在」的結論。
+**截斷過的搜尋結果不能拿來證明「不存在」**；要證明不存在，至少得看完整輸出或用計數。
 
 ---
 

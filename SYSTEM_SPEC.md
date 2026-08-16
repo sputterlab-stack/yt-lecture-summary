@@ -189,6 +189,13 @@ skip_files:
 
 ### `GET /catchup`
 
+⚠️ 這頁**會寫檔**：沒有融會貫通的篇章會顯示「▶ 生成融會貫通」按鈕
+（`catchup.html:399` → `genSynthesis()` → `POST /synthesis/<f>/generate`），
+點下去會呼叫 LLM 並把結果寫回該篇 `.md`，然後 `location.reload()`。
+同頁還有「生成乾貨」（`/digest/<f>/generate`）。
+所以 `outputs/summaries/` 的 sha256 會因為**單純瀏覽 UI 時的點擊**而改變——
+拿 sha256 當「沒動過資料」的驗收基準時要把這件事算進去。
+
 乾貨快讀頁（server-rendered，`templates/catchup.html`）：每篇列「標題 + 🧩 融會貫通（結構化重點整理）+ 乾貨摘要」，無心智圖/展開/學習工具。融會貫通用 `_extract_section(md, _SYNTHESIS_HEADING_RE)` 抽，經 `_synthesis_to_html()` 把 Markdown（`###` 小標 / 清單 / `**粗體**`）轉成安全 HTML 顯示（`.synth-h`/`ul`/`li` 樣式見 catchup.html）；乾貨用 `_extract_section(md, _DIGEST_HEADING_RE)`，`_digest_to_html()` 把 `[mm:ss]` 換成 `https://www.youtube.com/watch?v=<id>&t=<秒>s` 連結（`_youtube_id()` 從 frontmatter `source` 抽 11 碼 id）。兩者皆「缺則顯示 ▶ 生成 按鈕」即時補（`genSynthesis` / `genDigest` → POST generate → reload）。前端純標題/講者/tag 文字搜尋。
 
 ### `GET /logic/<filename>` ＋ `POST /logic/<filename>/generate`
