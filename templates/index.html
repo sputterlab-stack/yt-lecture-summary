@@ -685,7 +685,34 @@
        改前每張卡片內嵌 8-9 份完整 SVG（163 張 = 1,398 份），佔了首頁 HTML 的 44.7%。 */
     .ico { width: 20px; height: 20px; fill: none; stroke: currentColor;
            stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-    .ico-fill { fill: currentColor; stroke: none; }  </style>
+    .ico-fill { fill: currentColor; stroke: none; }
+
+    /* 抽考探針：唯一的「主動提取」入口。刻意只用 localStorage 記錄，
+       先量「會不會回訪」，再決定要不要做完整的間隔重複排程。 */
+    .recall-box {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 16px; flex-wrap: wrap;
+      background: linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%);
+      border: 1px solid #fdba74; border-radius: 12px;
+      padding: 14px 18px; margin: 0 0 18px 0;
+    }
+    .recall-left { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+    .recall-btn {
+      background: #ea580c; color: #fff; border: none; border-radius: 8px;
+      padding: 10px 18px; font-size: 1em; font-weight: 700; cursor: pointer;
+      white-space: nowrap;
+    }
+    .recall-btn:hover { background: #c2410c; }
+    .recall-hint { color: #9a3412; font-size: 0.88em; }
+    .recall-stat { color: #7c2d12; font-size: 0.88em; font-weight: 600; white-space: nowrap; }
+    .selfrate-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
+    .selfrate-btn {
+      background: #fff; border: 1px solid #d1d5db; border-radius: 8px;
+      padding: 8px 14px; font-size: 0.95em; cursor: pointer;
+    }
+    .selfrate-btn:hover { background: #f3f4f6; border-color: #9ca3af; }
+    .selfrate-done { color: #15803d; font-weight: 600; margin-top: 6px; }
+  </style>
 </head>
 <body>
 
@@ -749,6 +776,15 @@
   <h1>YT 演講摘要 Dashboard</h1>
   <p class="meta">共 {{ total }} 篇 · 第一性原理摘要 + 互動心智圖 · <a href="/catchup" style="color:#c2410c;font-weight:700;text-decoration:none;">🥩 乾貨快讀模式 →</a></p>
 </header>
+
+<!-- 抽考探針（active recall）：整個系統唯一的「主動提取」入口 -->
+<div class="recall-box">
+  <div class="recall-left">
+    <button class="recall-btn" onclick="randomChallenge()">🎯 抽考一篇（約 2 分鐘）</button>
+    <span class="recall-hint">合上摘要，用自己的話講一次核心論點——提取比重讀有效</span>
+  </div>
+  <div class="recall-stat" id="recall-stat"></div>
+</div>
 
 <!-- Convert box -->
 <div class="convert-box">
@@ -1355,6 +1391,7 @@ function reloadCards() {
 // 啟動時若 server 已有未完成 task（refresh 時），自動接手 polling
 window.addEventListener('load', () => {
   applyHiddenState();  // 還原使用者上次隱藏的演講
+  renderRecallStats(); // 抽考探針的 14 天統計
   fetch('/tasks').then(r => r.json()).then(data => {
     const inflight = (data.tasks || []).filter(t =>
       t.status !== 'done' && t.status !== 'error'
@@ -1453,11 +1490,72 @@ function renderChallengeFeedback(data) {
     html = '<div class="feedback-coach">（沒拿到評估資料）</div>';
   }
 
+  html += `
+    <div class="feedback-section">
+      <div class="feedback-label">剛剛的手感？（只記在這台瀏覽器，用來判斷要不要做完整複習排程）</div>
+      <div class="selfrate-row">
+        <button class="selfrate-btn" onclick="rateRecall('忘了')">😵 忘了</button>
+        <button class="selfrate-btn" onclick="rateRecall('模糊')">😐 模糊</button>
+        <button class="selfrate-btn" onclick="rateRecall('記得')">🙂 記得</button>
+      </div>
+    </div>`;
+
   const fb = document.getElementById('challenge-feedback');
   fb.innerHTML = html;
   fb.classList.add('visible');
 }
 
+// ── 抽考探針：只記「做了幾次、用了幾天」，不做 SM-2 排程 ──────────────────
+// 為什麼刻意這麼薄：這個系統已經有七層被動輸入，唯一的主動提取（考自己）打完就丟。
+// 先用最小成本量「使用者會不會真的回來抽考」，14 天內若至少 4 個不同日子有做，
+// 才值得升級成有排程的間隔重複系統。先建整套 SRS 是在賭一個沒量過的習慣。
+const RECALL_KEY = 'yt_recall_log';
+
+function loadRecallLog() {
+  try { return JSON.parse(localStorage.getItem(RECALL_KEY) || '[]'); }
+  catch (e) { return []; }
+}
+
+function recordRecall(filename, rating) {
+  const log = loadRecallLog();
+  log.push({filename, rating, completed_at: new Date().toISOString()});
+  localStorage.setItem(RECALL_KEY, JSON.stringify(log));
+  renderRecallStats();
+}
+
+function rateRecall(rating) {
+  if (!_currentChallengeFile) return;
+  recordRecall(_currentChallengeFile, rating);
+  const row = document.querySelector('#challenge-feedback .selfrate-row');
+  if (row) {
+    row.outerHTML = `<div class="selfrate-done">已記錄：${esc(rating)} ✔</div>`;
+  }
+}
+
+function renderRecallStats() {
+  const el = document.getElementById('recall-stat');
+  if (!el) return;
+  const cutoff = Date.now() - 14 * 24 * 3600 * 1000;
+  const recent = loadRecallLog().filter(r => {
+    const t = Date.parse(r.completed_at || '');
+    return !isNaN(t) && t >= cutoff;
+  });
+  const days = new Set(recent.map(r => String(r.completed_at).slice(0, 10)));
+  el.textContent = recent.length
+    ? `近 14 天：抽考 ${recent.length} 次 · 用了 ${days.size} 天`
+    : '近 14 天：還沒抽考過';
+}
+
+function randomChallenge() {
+  const cards = [...document.querySelectorAll('.card')]
+    .filter(c => !c.classList.contains('archived'));
+  if (!cards.length) {
+    alert('目前沒有可抽考的篇章');
+    return;
+  }
+  const pick = cards[Math.floor(Math.random() * cards.length)];
+  openChallenge(pick.dataset.filename);
+}
 
 // Esc 關閉 modal（任一個）
 document.addEventListener('keydown', (e) => {

@@ -1,6 +1,6 @@
 # YT 演講摘要 — 系統規格書
 
-> 開發者規格（API / schema / 並行架構）。使用面文件見 `README.md`。
+> 開發者規格（API / schema / 並行架構）。使用面文件見 `README.md`，改動歷程見 `DEVLOG.md`。
 
 ## 1. 架構總覽
 
@@ -31,6 +31,7 @@
 ┌─────────────────────────────────────────────────────────────┐
 │  transcriber.download_audio(url, prefix)  yt-dlp             │
 │  transcriber.transcribe(mp3, model_size)  Whisper            │
+│  ↑ torch/whisper/yt_dlp/openai 都在函式內才 import（見 §10）  │
 │  summarizer.first_principles_summary(...)  DeepSeek          │
 │  summarizer.write_summary / write_srt                        │
 └──────────────────────┬──────────────────────────────────────┘
@@ -311,10 +312,76 @@ done (step 5)
 
 各工具共用 `recategorize.split_frontmatter` / `extract_summary_top` / `update_frontmatter_keys`。`update_frontmatter_keys` 精準 in-place 替換指定 key（保留其他行原樣含 datetime / list / 註解）。
 
-## 10. 已知小債
+## 10. 啟動依賴邊界（2026-08-16）
+
+**規則：dashboard 只是把既有 .md 讀出來排版，它的啟動路徑不准載入任何轉檔/API 用的重型套件。**
+
+| 套件 | 載入點 | 為什麼 |
+|---|---|---|
+| `torch` / `whisper` | `transcriber.get_whisper_model()` 內 | 只有轉文字要用；頂層 import 要 2.5 秒以上 |
+| `yt_dlp` | `transcriber.download_audio()` 內 | 同上 |
+| `openai` | 各模組建立 client 的那個函式內 | 只有真的要打 API 才需要 |
+
+⚠️ **邊界必須畫在 `transcriber.py` 自己身上**，不能只在 `web_server.py` 延後——
+`summarizer.py` 有 `from transcriber import format_srt_timestamp`，任何載入 summarizer
+的路徑都會間接把 torch 拉進來。
+
+⚠️ 這些模組用 `OpenAI` 當**型別註解**（`def generate_x(client: OpenAI, ...)`），
+而註解在載入時就會求值。所以延後 import 的檔案一律要有
+`from __future__ import annotations` ＋ `if TYPE_CHECKING: from openai import OpenAI`，
+否則載入時 `NameError`。
+
+適用檔案：`transcriber` / `summarizer` / `web_server` / `enrich_intro` / `enrich_digest`
+/ `enrich_logic` / `enrich_synthesis` / `recategorize`。
+`gen_mindmap.py`、`enrich_summary.py` 是獨立 CLI，不在 dashboard 啟動路徑，維持頂層 import。
+
+**實測**：`import web_server` 2.7–6.6 秒 → **0.31 秒**；雙擊到 port 可連 3.25 秒 → **0.38 秒**。
+
+## 11. 前端：圖示 sprite 與兩條渲染路徑
+
+卡片圖示（logic / digest / intro / challenge / mindmap / rename / hide / delete / menu）
+的幾何**只在 `templates/index.html` 頂端的 `<svg><defs>` 定義一次**，卡片內用
+`<svg class="ico" viewBox="0 0 24 24"><use href="#i-xxx"/></svg>` 引用。
+共用樣式在 CSS `.ico` / `.ico-fill`。
+
+🔴 **卡片 markup 存在兩份，改一份等於沒改：**
+
+1. `{% for item in group.entries %}` 的 Jinja 伺服器渲染（首次載入）
+2. `renderCards()` 的 JS 重建（**轉檔完成後**會整個 `card-container.innerHTML = ''` 重畫）
+
+只改 Jinja 的話，使用者轉完一篇影片後畫面就會退回舊樣式。
+
+**效果**：首頁 HTML 1,294 KB → 878 KB；DOM 節點 11,297 → 8,215。
+**驗收方式**：對 9 個圖示各量一次 `getBBox()`，改前改後必須逐一相同；
+且必須先跑「把 sprite id 改錯」的對照組確認量測會變 0×0
+（`getBoundingClientRect()` 對破圖沒有辨識力，不可用）。
+
+## 12. 抽考探針（active recall，純前端）
+
+**沒有新增 endpoint、沒有新增頁面、不寫任何檔案。** 完全在 `templates/index.html` 內，
+重用既有的 `POST /challenge`。
+
+| 元件 | 說明 |
+|---|---|
+| 入口 | 首頁 `.recall-box` 的「🎯 抽考一篇」→ `randomChallenge()` 從未隱藏（非 `.archived`）的卡片隨機挑一張 → 開既有「考自己」modal |
+| 自評 | 批改結果下方三鈕（忘了／模糊／記得）→ `rateRecall()` |
+| 儲存 | `localStorage['yt_recall_log']` = `[{filename, rating, completed_at(ISO)}]` |
+| 顯示 | `#recall-stat`：「近 14 天：抽考 N 次 · 用了 M 天」（M = 不重複日期數） |
+
+**刻意不做**：ease / streak / SM-2 / 每日到期佇列 / server 端狀態。
+理由有二：①「使用者會不會持續回訪」目前零證據，這個探針就是要量它；
+②`/challenge` 回的 `got_right[]` / `missed[]` 長度由 LLM 自由決定，
+**換算成 SM-2 成績是假精確**，排程只能吃使用者自評。
+
+**升級判準**：滿 14 天後看**不同使用日數**（不是總次數），≥ 4 天才做完整排程系統。
+
+## 13. 已知小債
 
 | 項目 | 影響 | 修法 |
 |---|---|---|
 | `_TASKS` dict 無 GC | 長跑 server 記憶體增長；重啟清 | 30 分鐘 timer GC done/error 老 task |
 | 多 task 同時 `gen_mindmap.py` | 已用批次 debounce 規避 | — |
 | Flask 預設 `debug=False` 不熱重載 templates | 改檔需重啟 | 由開發者 awareness |
+| 卡片 markup 在 Jinja 與 `renderCards()` 各一份 | 改動要同步兩處，漏了會在轉檔後才暴露 | 合併成單一渲染路徑（大改，暫不做） |
+| `applyFilter()` 對 DOM 過濾 | 未來若做卡片分批渲染，沒建 DOM 的卡片會搜不到 | 屆時改成對資料陣列過濾 |
+| 內文不可搜 | 只能搜標題／講者／tag | 下一輪做全文檢索（實測讀完 163 篇僅 0.017 秒，暴力搜即可） |

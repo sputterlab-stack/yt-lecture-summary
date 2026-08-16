@@ -14,6 +14,7 @@
 - 🧠 **「邏輯拆解」按鈕**：第一性原理 × 多視角——把主張剝到「不可再質疑的地基」→ 一步步推回結論（每步標 [事實]/[推論]/[假設]/[價值判斷]）→ 關鍵轉折用 🟢最強支持/🔴最大破口/⚖️第一性裁決(附成立度分數) 壓力測試 → 崩潰條件。想看懂底層邏輯、自己重推一遍就點這個
 - 📖 **「導讀」按鈕**：800-2000 字線性敘事帶入（先有 narrative scaffolding 再去看心智圖網路）
 - 📝 **「考自己」按鈕**（Active Recall）：合上摘要、用自己的話講，LLM 對齊原內容指出你漏掉/抓錯的點
+- 🎯 **「抽考一篇」**（首頁最上方）：隨機抽一篇考自己 + 事後自評，累積「近 14 天抽考幾次、用了幾天」。整個系統唯一的**主動提取**入口（其餘都是被動閱讀）
 - 🗂️ 兩層 taxonomy 治理（`category_taxonomy.yaml` 主類+子類 + alias 折疊舊類別）
 - 📚 frontmatter 自動分類 + INDEX 二層索引
 
@@ -99,7 +100,19 @@ code --install-extension tomoyukim.vscode-mermaid-editor
 - Windows：雙擊 `開啟UI.bat`
 - Mac/Linux：`./run-ui.sh`
 
-啟 Flask server → 自動開瀏覽器 `localhost:5000` → URL 輸入框轉新影片 + 卡片網格瀏覽既有摘要。
+啟 Flask server → **等 server 真的起來了**才自動開瀏覽器 `localhost:5000` → URL 輸入框轉新影片 + 卡片網格瀏覽既有摘要。
+
+> 舊版是先開瀏覽器才啟 server，所以第一眼常看到「無法連線」要自己按重新整理；
+> 現在由 `wait_and_open.py` 等 port 通了才開（最多等 60 秒）。
+> 啟動約 0.4 秒——轉檔用的 Whisper/torch 改成**第一次轉影片時才載入**，
+> 只是要看既有摘要的話不會付那筆時間。
+
+- **🎯 抽考一篇（約 2 分鐘）**（頁面最上方橘色框）：隨機挑一篇你看過的演講，
+  合上摘要用自己的話講一次核心論點，LLM 對照原文告訴你抓對什麼、漏掉什麼。
+  批改後選一下手感（忘了／模糊／記得），旁邊會累積「近 14 天：抽考 N 次 · 用了 M 天」。
+  紀錄只存在這台瀏覽器（localStorage），不會寫進摘要檔。
+  **為什麼只有這樣**：要不要做成「每天排程複習」還沒決定——先用這個統計看看你實際上
+  會不會回來用；滿 14 天若有 4 天以上有抽考，再升級成完整的間隔重複系統。
 
 - **上方 textarea（多行 URL）**：一行一個，可貼一批 → 點「轉換」→ 立刻可繼續貼下一批；下方 task 卡片網格累積顯示每筆 5 步進度（藍=跑、黃=等批次、綠=完成、紅=失敗）
 - **Hybrid 並行**：Whisper 階段全域 lock 串行（防 GPU OOM），下載 + DeepSeek 階段並行；上限以 `PARALLEL_LIMIT` env 控制（預設 3）
@@ -196,6 +209,7 @@ code "outputs/summaries/心智圖總覽.md"
 | `enrich_logic.py` | 一次性批次：補既有摘要的「## 邏輯拆解」段（第一性原理推導鏈 × 多視角） | 加新欄位後 |
 | `category_taxonomy.yaml` | 主類+子類二層樹 + alias 折疊 + skip_files 黑名單 | 想調分類時改 |
 | `prompts.py` | 集中所有 LLM prompts（摘要、心智圖、考自己） | 想調 prompt 時改 |
+| `wait_and_open.py` | 等 port 5000 通了才開瀏覽器（避免開太早看到「無法連線」） | 由 `開啟UI.bat` / `run-ui.sh` 自動呼叫 |
 | `一鍵啟動.bat` / `run-cli.sh` | 命令列 chain（不用 web UI） | fallback |
 | `setup.bat` / `setup.sh` | 一次性建 venv + 裝依賴 | 第一次 clone 後跑 |
 | `summarizer.py` / `transcriber.py` / `config.py` | 主流程內部模組 | 不直接呼叫 |
