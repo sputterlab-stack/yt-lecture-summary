@@ -124,6 +124,8 @@ skip_files:
       "filename": "...",       // 寫檔後填
       "yt_title": "...",
       "error": null | "錯誤訊息",
+      "failure_kind": null | "download_blocked",      // 結構化欄位，前端不解析錯誤文字
+      "suggested_action": null | "update_ytdlp",      // 前端據此打開更新橫幅
       "submitted_at": "ISO 8601",
       "finished_at": null | "ISO 8601"
     }
@@ -136,6 +138,41 @@ skip_files:
   "limits": { "parallel": 3, "deepseek": 3 }
 }
 ```
+
+### `GET /ytdlp/status`
+
+```json
+{
+  "version": "2026.08.19" | null,
+  "age_days": 4 | null,
+  "stale": false,                    // age_days > 90，或 problem 非 null（查不出來一律當要出聲）
+  "problem": null | "not_installed" | "unparseable_version" | "lookup_failed: …",
+  "updating": false,                 // pip 正在跑
+  "needs_restart": false,            // 已更新，但這個 process 先前已載入舊模組
+  "last_update": null | {"ok": true, "old": "…", "new": "…", "at": "ISO 8601"}
+}
+```
+
+版本用 `importlib.metadata` 查，**不 import yt_dlp 本體**（冷啟動 0.38 秒不能為了顯示一行字吐回去）。
+
+### `POST /ytdlp/update`
+
+**只有使用者按下才會執行；沒有任何自動或背景更新。** 跑 `sys.executable -m pip install -U yt-dlp`（逾時 300 秒）。
+
+| 情況 | 回應 |
+|---|---|
+| 成功 | 200 `{ok, old_version, new_version, needs_restart, message}` |
+| 有 task 在 queued/running/waiting_batch，或 `_PENDING > 0`，或批次執行中 | **409**，且**不會執行 pip** |
+| 已經在更新 | 409 |
+| `sys.executable` 不在專案 `venv/` 底下 | **400**（fail closed，避免更新到系統 Python） |
+| pip 失敗或逾時 | 500 `{error, detail, manual}` |
+
+**互斥是雙向的**：`POST /convert` 在 `updating` 或 `needs_restart` 時回 **409**，
+而且**檢查與建立 task 在同一把 `_UPDATE_LOCK` 內**（否則使用者剛好在 pip 跑到一半按轉換，
+會用到一半新一半舊的套件）。
+
+`needs_restart` 的判準是**更新當下 `"yt_dlp" in sys.modules`**：
+沒載入過就直接生效、載入過就必須重開視窗——不假裝按完就好了。
 
 ### `GET /status/<task_id>`
 

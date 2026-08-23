@@ -107,9 +107,49 @@ def make_temp_prefix(task_id: str | None = None) -> str:
 
 _VERSION_WARNED = False
 
+# 90 天不是「YouTube 會擋」的臨界點，是 yt-dlp 官方自己的門檻：
+# 它保證至少每 90 天一個 stable release，逾期就代表這份安裝落後了一個發布週期。
+STALE_DAYS = 90
+
+
+class DownloadBlocked(RuntimeError):
+    """下載被擋（403／需登入／疑似機器人）。
+
+    帶結構化欄位，讓上層**不必比對錯誤訊息的字串**——文案一改，字串比對就會靜默失效。
+    """
+
+    failure_kind = "download_blocked"
+    suggested_action = "update_ytdlp"
+
+
+def ytdlp_status() -> dict:
+    """回 `{version, age_days, stale, problem}`，給畫面顯示用。
+
+    刻意用 `importlib.metadata` 查版本，**不 import yt_dlp 本體**——
+    commit 1ab3c09 花力氣把冷啟動從 3.25 秒壓到 0.38 秒，不能為了顯示一行字吐回去。
+    查不到或看不懂版本時一律當成 stale（要出聲），**不默默當作沒事**。
+    """
+    from importlib.metadata import PackageNotFoundError
+    from importlib.metadata import version as pkg_version
+
+    try:
+        ver = pkg_version("yt-dlp")
+    except PackageNotFoundError:
+        return {"version": None, "age_days": None, "stale": True, "problem": "not_installed"}
+    except Exception as e:  # metadata 損壞 / 權限問題
+        return {"version": None, "age_days": None, "stale": True, "problem": f"lookup_failed: {e}"}
+
+    try:
+        released = datetime.strptime(ver[:10], "%Y.%m.%d")
+    except ValueError:
+        return {"version": ver, "age_days": None, "stale": True, "problem": "unparseable_version"}
+
+    age_days = (datetime.now() - released).days
+    return {"version": ver, "age_days": age_days, "stale": age_days > STALE_DAYS, "problem": None}
+
 
 def _warn_if_stale_ytdlp(log) -> None:
-    """yt-dlp 超過 90 天沒更新就寫一筆警告（每個 process 只寫一次）。
+    """版本落後就寫一筆警告（每個 process 只寫一次）。
 
     YouTube 是持續變動的目標，舊版下載器遲早會被擋 —— 2026-08-23 的故障就是
     5 個月沒更新的版本被回 403。這裡不自動更新（不在使用者不知情下改環境），
@@ -120,21 +160,18 @@ def _warn_if_stale_ytdlp(log) -> None:
         return
     _VERSION_WARNED = True
 
-    import yt_dlp
-
-    ver = getattr(yt_dlp.version, "__version__", "")
-    try:
-        released = datetime.strptime(ver[:10], "%Y.%m.%d")
-    except ValueError:
+    st = ytdlp_status()
+    if not st["stale"]:
         return
-    age_days = (datetime.now() - released).days
-    if age_days > 90:
-        log.warning(
-            'yt-dlp 版本 %s 已 %d 天未更新，YouTube 很可能會擋下載。更新指令："%s" -m pip install -U yt-dlp',
-            ver,
-            age_days,
-            sys.executable,
-        )
+    if st["problem"]:
+        log.warning("yt-dlp 版本查不出來（%s），無法判斷是否過舊", st["problem"])
+        return
+    log.warning(
+        'yt-dlp 版本 %s 已 %d 天未更新，YouTube 很可能會擋下載。更新指令："%s" -m pip install -U yt-dlp',
+        st["version"],
+        st["age_days"],
+        sys.executable,
+    )
 
 
 _BLOCKED_SIGNS = ("403", "Forbidden", "Sign in to confirm", "not a bot", "age")
@@ -191,7 +228,10 @@ def download_audio(
             return f"{use_prefix}.mp3", safe_title, duration
     except Exception as e:
         log.error("下載失敗 url=%s：%s", url, e)
-        raise RuntimeError(f"音訊下載失敗：{e}{_download_hint(str(e))}") from e
+        hint = _download_hint(str(e))
+        if hint:  # 被擋型：丟帶欄位的例外，上層據此決定要不要提示更新
+            raise DownloadBlocked(f"音訊下載失敗：{e}{hint}") from e
+        raise RuntimeError(f"音訊下載失敗：{e}") from e
 
 
 def transcribe(mp3_path: str, model_size: str = "base") -> dict:

@@ -80,6 +80,20 @@
     .btn-convert:hover:not(:disabled) { background: #1558a8; }
 
     /* ── Tasks area (多工進度) ── */
+    /* 下載器過舊／被擋的橫幅。只在該叫的時候出現，不製造常駐噪音 */
+    .ytdlp-banner {
+      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+      margin: 0 0 12px; padding: 10px 14px; border-radius: 8px;
+      background: #fffbeb; border: 1px solid #fcd34d; color: #78350f; font-size: 14px;
+    }
+    .ytdlp-banner.blocked { background: #fef2f2; border-color: #fca5a5; color: #7f1d1d; }
+    .ytdlp-banner.okmsg  { background: #f0fdf4; border-color: #86efac; color: #14532d; }
+    .btn-ytdlp-update {
+      margin-left: auto; padding: 6px 14px; border: 0; border-radius: 6px;
+      background: #b45309; color: #fff; font-size: 14px; cursor: pointer;
+    }
+    .btn-ytdlp-update:disabled { background: #d6d3d1; cursor: not-allowed; }
+
     .tasks-area { margin-top: 14px; display: none; }
     .tasks-area.visible { display: block; }
     .tasks-header {
@@ -873,6 +887,21 @@
   <p class="meta">共 {{ total }} 篇 · 第一性原理摘要 + 互動心智圖 · <a href="/catchup" style="color:#c2410c;font-weight:700;text-decoration:none;">🥩 乾貨快讀模式 →</a></p>
 </header>
 
+<!-- 下載器健康橫幅：過舊時（伺服器算好）或下載被擋時（前端收到 suggested_action）才出現 -->
+<div class="ytdlp-banner" id="ytdlp-banner"
+     style="display:{{ 'flex' if ytdlp.stale else 'none' }}">
+  <span id="ytdlp-banner-text">
+    {%- if ytdlp.problem == 'not_installed' -%}
+      找不到下載工具 yt-dlp，貼連結會失敗。
+    {%- elif ytdlp.problem -%}
+      下載工具的版本查不出來（{{ ytdlp.problem }}），建議更新一次。
+    {%- elif ytdlp.stale -%}
+      下載工具已經 {{ ytdlp.age_days }} 天沒更新（{{ ytdlp.version }}），YouTube 可能會擋掉下載。
+    {%- endif -%}
+  </span>
+  <button class="btn-ytdlp-update" id="btn-ytdlp-update" onclick="updateYtdlp()">立即更新</button>
+</div>
+
 <!-- Convert box -->
 <div class="convert-box">
   <h2>轉換新影片（一行一個 URL，可批次）</h2>
@@ -1436,6 +1465,47 @@ function startConvert() {
   });
 }
 
+// ---- 下載工具：提醒 + 一鍵更新 ----
+function showYtdlpBanner(text, kind) {
+  const el = document.getElementById('ytdlp-banner');
+  document.getElementById('ytdlp-banner-text').textContent = text;
+  el.classList.remove('blocked', 'okmsg');
+  if (kind) el.classList.add(kind);
+  el.style.display = 'flex';
+}
+
+function updateYtdlp() {
+  const btn = document.getElementById('btn-ytdlp-update');
+  btn.disabled = true;
+  showYtdlpBanner('正在更新下載工具，請稍候（大約十幾秒到一分鐘）…', null);
+  fetch('/ytdlp/update', { method: 'POST' })
+    .then(r => r.json().then(d => ({ code: r.status, d })))
+    .then(({ code, d }) => {
+      if (code === 409) {                       // 還有轉檔在跑 / 已更新待重開
+        showYtdlpBanner(d.error, 'blocked');
+        btn.disabled = false;
+        return;
+      }
+      if (!d.ok) {
+        showYtdlpBanner('更新失敗：' + (d.detail || d.error || '') +
+                        (d.manual ? '　手動指令：' + d.manual : ''), 'blocked');
+        btn.disabled = false;
+        return;
+      }
+      showYtdlpBanner(d.message, 'okmsg');
+      btn.style.display = 'none';
+      if (d.needs_restart) {                    // 舊模組還在記憶體裡，擋住轉換免得白跑
+        const cb = document.getElementById('btn-convert');
+        cb.disabled = true;
+        cb.title = '下載工具已更新，請重新開啟程式';
+      }
+    })
+    .catch(e => {
+      showYtdlpBanner('更新失敗（網路或伺服器沒回應）：' + e, 'blocked');
+      btn.disabled = false;
+    });
+}
+
 function pollTasks() {
   fetch('/tasks')
     .then(r => r.json())
@@ -1443,6 +1513,12 @@ function pollTasks() {
       const tasks = data.tasks || [];
       const batch = data.batch || {};
       renderTasks(tasks, batch);
+
+      // 下載被擋時立刻把橫幅打開（不必等 90 天門檻）。
+      // 判斷用後端給的欄位，不是比對錯誤訊息文字——文案一改字串比對就會靜默失效。
+      if (tasks.some(t => t.suggested_action === 'update_ytdlp')) {
+        showYtdlpBanner('下載被 YouTube 擋掉了。最常見的原因是下載工具的版本落後。', 'blocked');
+      }
 
       const tracked = tasks.filter(t => _activeTaskIds.has(t.task_id));
       const stillRunning = tracked.filter(t =>

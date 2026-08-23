@@ -99,6 +99,12 @@ _BATCH_STATE = {"running": False, "last_finished_at": None, "last_error": None}
 _ROUND_TASKS: set[str] = set()
 _ROUND_LOCK = threading.Lock()
 
+# 下載器更新狀態。更新與轉檔必須互斥：pip 換掉套件檔時，正在跑的 task 可能一半舊一半新。
+# needs_restart：更新前這個 process 已經載入過 yt_dlp，舊模組還在記憶體裡 —— 不重開就
+# 還是用舊的，所以要擋住轉換並明講，不能讓使用者以為按完就好了。
+_UPDATE_STATE = {"running": False, "needs_restart": False, "last": None}
+_UPDATE_LOCK = threading.Lock()
+
 # ---------------------------------------------------------------------------
 # Task state
 # ---------------------------------------------------------------------------
@@ -406,6 +412,11 @@ def _run_one_task(task_id: str, url: str) -> None:
                 # log.exception 同時寫紀錄檔與 console（原本的 print_exc 只進 console，
                 # 視窗一關就查不到 —— 這正是 2026-08-23 查不出下載為何失敗的原因）
                 log.exception("task=%s 失敗 url=%s", task_id, url)
+                with _TASKS_LOCK:
+                    t = _TASKS.get(task_id)
+                    if t:
+                        t["failure_kind"] = getattr(e, "failure_kind", None)
+                        t["suggested_action"] = getattr(e, "suggested_action", None)
                 _set_status(task_id, "error", f"{type(e).__name__}: {e}")
                 return  # finally 仍會跑 _PENDING -= 1
     finally:
@@ -460,6 +471,7 @@ def index():
         total=len(entries),
         category_order=CATEGORY_ORDER,
         parallel_limit=PARALLEL_LIMIT,
+        ytdlp=transcriber.ytdlp_status(),  # 下載器過舊時首頁要直接叫，不是等使用者去翻 log
     )
 
 
@@ -481,31 +493,135 @@ def convert():
     if not urls:
         return jsonify({"error": "url 不可為空"}), 400
 
-    task_ids: list[str] = []
-    now = datetime.now(timezone.utc).isoformat()
-    with _PENDING_LOCK:
-        _PENDING += len(urls)
+    # 更新下載器與轉檔互斥。檢查與建立 task 之間不能有空隙，否則使用者剛好在
+    # pip 跑到一半按下轉換，就會用到一半新一半舊的套件。
+    with _UPDATE_LOCK:
+        if _UPDATE_STATE["running"]:
+            return jsonify({"error": "正在更新下載工具，請等它跑完再轉換"}), 409
+        if _UPDATE_STATE["needs_restart"]:
+            return jsonify({"error": "下載工具已更新，請關掉視窗重新開啟程式後再轉換"}), 409
 
-    for url in urls:
-        task_id = str(uuid.uuid4())
-        with _TASKS_LOCK:
-            _TASKS[task_id] = {
-                "task_id": task_id,
-                "url": url,
-                "status": "queued",
-                "current_step": TASK_STEP_NAMES[0],
-                "step_index": 0,
-                "total_steps": TOTAL_STEPS,
-                "error": None,
-                "finished_at": None,
-                "submitted_at": now,
-                "filename": None,
-                "yt_title": None,
-            }
-        task_ids.append(task_id)
-        threading.Thread(target=_run_one_task, args=(task_id, url), daemon=True).start()
+        task_ids: list[str] = []
+        now = datetime.now(timezone.utc).isoformat()
+        with _PENDING_LOCK:
+            _PENDING += len(urls)
+
+        for url in urls:
+            task_id = str(uuid.uuid4())
+            with _TASKS_LOCK:
+                _TASKS[task_id] = {
+                    "task_id": task_id,
+                    "url": url,
+                    "status": "queued",
+                    "current_step": TASK_STEP_NAMES[0],
+                    "step_index": 0,
+                    "total_steps": TOTAL_STEPS,
+                    "error": None,
+                    "failure_kind": None,      # 結構化的失敗種類，前端不必去解析錯誤文字
+                    "suggested_action": None,  # 例如 update_ytdlp
+                    "finished_at": None,
+                    "submitted_at": now,
+                    "filename": None,
+                    "yt_title": None,
+                }
+            task_ids.append(task_id)
+            threading.Thread(target=_run_one_task, args=(task_id, url), daemon=True).start()
 
     return jsonify({"task_ids": task_ids, "task_id": task_ids[0]}), 202  # task_id 留向後相容
+
+
+@app.route("/ytdlp/status")
+def ytdlp_status_api():
+    """下載器版本狀態 + 更新狀態，給首頁橫幅用。"""
+    st = transcriber.ytdlp_status()
+    with _UPDATE_LOCK:
+        st["updating"] = _UPDATE_STATE["running"]
+        st["needs_restart"] = _UPDATE_STATE["needs_restart"]
+        st["last_update"] = _UPDATE_STATE["last"]
+    return jsonify(st)
+
+
+@app.route("/ytdlp/update", methods=["POST"])
+def ytdlp_update():
+    """使用者按下才更新下載器。**沒有任何自動／背景更新**——不在使用者不知情時改他的環境。
+
+    三道保護：
+    1. 只更新專案自己的 venv（`sys.executable` 不在專案 venv 內就拒絕，免得更新到系統 Python）
+    2. 有 task 在跑 / 批次在跑 / 已經在更新 → 409（pip 換檔時不能有人在用）
+    3. 更新前若這個 process 已經載入過 yt_dlp，標記 needs_restart 並擋住轉換
+    """
+    venv_dir = (BASE_DIR / "venv").resolve()
+    exe = Path(sys.executable).resolve()
+    if venv_dir not in exe.parents:
+        return jsonify({
+            "ok": False,
+            "error": f"目前這個程式不是用專案的 venv 啟動的（{exe}）。"
+                     "請關掉視窗，改用「開啟UI.bat」重新啟動再更新，"
+                     "以免更新到別的 Python 環境。",
+        }), 400
+
+    with _UPDATE_LOCK:
+        if _UPDATE_STATE["running"]:
+            return jsonify({"ok": False, "error": "已經在更新了，請稍候"}), 409
+        with _TASKS_LOCK:
+            busy = [t["task_id"] for t in _TASKS.values()
+                    if t["status"] in ("queued", "running", "waiting_batch")]
+        with _PENDING_LOCK:
+            pending = _PENDING
+        if busy or pending > 0 or _BATCH_STATE["running"]:
+            return jsonify({
+                "ok": False,
+                "error": "還有轉檔在進行中，等它跑完再更新（更新時換掉套件會影響正在跑的轉檔）",
+            }), 409
+        _UPDATE_STATE["running"] = True
+
+    before = transcriber.ytdlp_status().get("version")
+    already_loaded = "yt_dlp" in sys.modules  # 舊模組已在記憶體 → 更新後必須重開才生效
+    try:
+        r = subprocess.run(
+            [sys.executable, "-m", "pip", "install", "-U", "yt-dlp"],
+            cwd=str(BASE_DIR), capture_output=True, text=True,
+            encoding="utf-8", errors="replace", timeout=300,
+        )
+        ok = r.returncode == 0
+        tail = ((r.stdout or "") + (r.stderr or "")).strip()[-500:]
+        after = None
+        if ok:
+            # 版本要用新的 process 查：這個 process 的套件中繼資料可能還是舊的快取
+            q = subprocess.run(
+                [sys.executable, "-c",
+                 "import importlib.metadata as m; print(m.version('yt-dlp'))"],
+                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60,
+            )
+            after = q.stdout.strip() or None
+        log.info("下載器更新：ok=%s %s -> %s", ok, before, after)
+    except subprocess.TimeoutExpired:
+        ok, tail, after = False, "更新逾時（300 秒）——可能是網路不通", None
+        log.error("下載器更新逾時")
+    finally:
+        with _UPDATE_LOCK:
+            _UPDATE_STATE["running"] = False
+            if ok and already_loaded:
+                _UPDATE_STATE["needs_restart"] = True
+            _UPDATE_STATE["last"] = {"ok": ok, "old": before, "new": after,
+                                     "at": datetime.now(timezone.utc).isoformat()}
+
+    if not ok:
+        return jsonify({
+            "ok": False,
+            "error": "更新失敗",
+            "detail": tail,
+            "manual": f'"{sys.executable}" -m pip install -U yt-dlp',
+        }), 500
+
+    return jsonify({
+        "ok": True,
+        "old_version": before,
+        "new_version": after,
+        "needs_restart": already_loaded,
+        "message": ("已更新到 " + str(after) +
+                    ("，請關掉視窗重新開啟程式才會生效" if already_loaded else "，可以直接繼續使用")),
+    })
 
 
 @app.route("/status/<task_id>")
