@@ -154,6 +154,7 @@ code --install-extension tomoyukim.vscode-mermaid-editor
 | 心智圖 | `outputs/summaries/{標題}.mmd` | mermaid mindmap，視覺化吸收 |
 | 字幕 | `outputs/transcripts/{標題}.srt` | 帶時間軸逐字稿 |
 | 索引 | `outputs/summaries/INDEX.md` | 按 category 分群的總表 |
+| 紀錄檔 | `outputs/logs/app.log` | 轉檔過程與錯誤（2 MB 輪替、留 5 份）；視窗關掉也查得到 |
 
 `.md` 開頭含 YAML frontmatter：
 
@@ -337,3 +338,28 @@ API：`POST /challenge` body `{filename, answer}` → `{got_right, missed, coach
 ## 十、切換模型
 
 編輯 `config.py` 的 `DEEPSEEK_MODEL`。摘要 / 心智圖 / 考自己 / 重分類 / enrich 共用同一模型。
+
+---
+
+## 十一、貼了連結卻失敗？
+
+**先看紀錄檔**：`outputs/logs/app.log`（最新的在最下面）。視窗關掉也查得到，不必重現一次。
+
+**最常見的一種：下載器版本落後，被 YouTube 擋。**
+YouTube 會持續改，舊版 yt-dlp 遲早會收到 `HTTP Error 403: Forbidden`。
+更新指令（**一定要用專案自己的 Python**，不然會裝到別的環境去）：
+
+```bash
+# Windows
+venv\Scripts\python.exe -m pip install -U yt-dlp
+# Mac / Linux
+./venv/bin/python -m pip install -U yt-dlp
+```
+
+程式在偵測到這類錯誤時，會把上面這行指令直接寫在錯誤訊息裡；另外只要下載器超過
+90 天沒更新，轉檔時就會先在紀錄檔留一筆警告——**在被擋之前就叫，不必等它壞掉。**
+
+更新完仍失敗的話，其他可能是：影片需要登入、有地區或權限限制、網路暫時被擋。
+這些紀錄檔裡都看得到原始錯誤訊息。
+
+> 程式**不會**自動更新 yt-dlp——那等於在你不知情時改動你的環境。更新永遠由你按下。

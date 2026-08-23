@@ -1495,8 +1495,10 @@ function renderTasks(allTasks, batch) {
     `${display.length} 個任務 · ` +
     `running ${counts.queued + counts.running + counts.waiting_batch} · ` +
     `done ${counts.done} · error ${counts.error}`;
+  // 批次（索引／心智圖）失敗不算轉檔失敗 —— 摘要早就存好了，這裡只提示收尾沒跑完
   document.getElementById('batch-status').textContent =
-    batch.running ? '批次後處理中…' : '';
+    batch.running ? '批次後處理中…'
+                  : (batch.last_error ? '⚠ 摘要已存好，但索引／心智圖更新沒跑完（看 outputs/logs/app.log）' : '');
 
   // 「清除已完成」按鈕：有 done/error 才能按
   const clearBtn = document.getElementById('btn-clear-tasks');

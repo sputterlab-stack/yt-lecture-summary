@@ -5,10 +5,13 @@ import glob
 import math
 import os
 import re
+import sys
 import threading
 import time
+from datetime import datetime
 
-from config import FFMPEG_DIR
+from applog import get_logger
+from config import FFMPEG_DIR, OUTPUT_ROOT
 
 if FFMPEG_DIR:
     os.environ["PATH"] = FFMPEG_DIR + os.pathsep + os.environ.get("PATH", "")
@@ -102,6 +105,53 @@ def make_temp_prefix(task_id: str | None = None) -> str:
     return _TEMP_PREFIX_BASE
 
 
+_VERSION_WARNED = False
+
+
+def _warn_if_stale_ytdlp(log) -> None:
+    """yt-dlp 超過 90 天沒更新就寫一筆警告（每個 process 只寫一次）。
+
+    YouTube 是持續變動的目標，舊版下載器遲早會被擋 —— 2026-08-23 的故障就是
+    5 個月沒更新的版本被回 403。這裡不自動更新（不在使用者不知情下改環境），
+    只讓這件事在被擋之前就留下紀錄。
+    """
+    global _VERSION_WARNED
+    if _VERSION_WARNED:
+        return
+    _VERSION_WARNED = True
+
+    import yt_dlp
+
+    ver = getattr(yt_dlp.version, "__version__", "")
+    try:
+        released = datetime.strptime(ver[:10], "%Y.%m.%d")
+    except ValueError:
+        return
+    age_days = (datetime.now() - released).days
+    if age_days > 90:
+        log.warning(
+            'yt-dlp 版本 %s 已 %d 天未更新，YouTube 很可能會擋下載。更新指令："%s" -m pip install -U yt-dlp',
+            ver,
+            age_days,
+            sys.executable,
+        )
+
+
+_BLOCKED_SIGNS = ("403", "Forbidden", "Sign in to confirm", "not a bot", "age")
+
+
+def _download_hint(err_text: str) -> str:
+    """被擋型的錯誤才補一段「下一步做什麼」。其他錯誤保留原文，不亂猜原因。"""
+    if not any(s.lower() in err_text.lower() for s in _BLOCKED_SIGNS):
+        return ""
+    return (
+        "\n這類錯誤通常是下載器版本落後被 YouTube 擋。請用本程式的 Python 更新後重試：\n"
+        f'  "{sys.executable}" -m pip install -U yt-dlp\n'
+        "更新後仍失敗的話，可能是影片需要登入、有地區或權限限制、或網路暫時被擋。\n"
+        f"完整紀錄：{OUTPUT_ROOT / 'logs' / 'app.log'}"
+    )
+
+
 def download_audio(
     url: str, prefix: str | None = None
 ) -> tuple[str, str, float]:
@@ -110,6 +160,9 @@ def download_audio(
             None 時用 process-level prefix（單一 CLI 模式）。
     """
     import yt_dlp
+
+    log = get_logger()
+    _warn_if_stale_ytdlp(log)
 
     use_prefix = prefix if prefix is not None else _TEMP_PREFIX_BASE
     ydl_opts = {
@@ -122,8 +175,9 @@ def download_audio(
             }
         ],
         "outtmpl": use_prefix,
+        # quiet 只壓進度條；no_warnings 會連「你的版本太舊」都摀住，所以刻意不設。
+        # 2026-08-23：下載被 403 擋了整整一週，而 yt-dlp 早就想說這句話。
         "quiet": True,
-        "no_warnings": True,
         "overwrites": True,
     }
 
@@ -136,7 +190,8 @@ def download_audio(
             print(f"(下載完成：{safe_title}，時長 {duration:.0f} 秒)")
             return f"{use_prefix}.mp3", safe_title, duration
     except Exception as e:
-        raise RuntimeError(f"音訊下載失敗：{e}") from e
+        log.error("下載失敗 url=%s：%s", url, e)
+        raise RuntimeError(f"音訊下載失敗：{e}{_download_hint(str(e))}") from e
 
 
 def transcribe(mp3_path: str, model_size: str = "base") -> dict:

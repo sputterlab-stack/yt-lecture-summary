@@ -1,5 +1,7 @@
 # CPU torch by default; for GPU CUDA see README
-yt-dlp
+# 下限而非釘死：YouTube 會持續改，舊版遲早被擋（2026-08-23 就被 403 擋了一週）。
+# 這行只擋「重灌時裝到更舊的版本」，不會讓它自己保持最新——那要自己跑 pip install -U yt-dlp
+yt-dlp>=2026.8.19
 openai-whisper
 torch
 openai>=1.0

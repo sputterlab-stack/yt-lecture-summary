@@ -16,7 +16,6 @@ import shutil
 import sys
 import subprocess
 import threading
-import traceback
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -31,6 +30,7 @@ from flask import Flask, jsonify, render_template, request
 import config  # noqa: F401（為了 .env 載入副作用）
 import summarizer
 import transcriber
+from applog import get_logger
 from config import DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, DEEPSEEK_MODEL, OUTPUT_ROOT, WHISPER_MODEL
 from enrich_intro import (
     extract_breakdown,
@@ -93,13 +93,19 @@ _DEEPSEEK_SEM = threading.Semaphore(DEEPSEEK_PARALLEL)
 _PENDING = 0
 _PENDING_LOCK = threading.Lock()
 _BATCH_LOCK = threading.Lock()
-_BATCH_STATE = {"running": False, "last_finished_at": None}
+_BATCH_STATE = {"running": False, "last_finished_at": None, "last_error": None}
+
+# 這一輪等著結算的 task id。批次跑到一半新提交的 task 屬於下一輪，不該被這輪結案。
+_ROUND_TASKS: set[str] = set()
+_ROUND_LOCK = threading.Lock()
 
 # ---------------------------------------------------------------------------
 # Task state
 # ---------------------------------------------------------------------------
 _TASKS: dict[str, dict] = {}
 _TASKS_LOCK = threading.Lock()
+
+log = get_logger()  # 轉檔過程寫進 outputs/logs/app.log，關掉視窗也留得住
 
 # Per-task 5 步：1-4 個別跑、5 等批次完成後標 done
 TASK_STEP_NAMES = [
@@ -259,6 +265,9 @@ def _set_step(task_id: str, idx: int) -> None:
         if t:
             t["step_index"] = idx
             t["current_step"] = TASK_STEP_NAMES[idx - 1] if 1 <= idx <= TOTAL_STEPS else TASK_STEP_NAMES[-1]
+    # 寫檔放在鎖外：logging 是 file IO，不該拉長 _TASKS_LOCK 的持有時間
+    name = TASK_STEP_NAMES[idx - 1] if 1 <= idx <= TOTAL_STEPS else TASK_STEP_NAMES[-1]
+    log.info("task=%s step=%d/%d %s", task_id, idx, TOTAL_STEPS, name)
 
 
 def _set_status(task_id: str, status: str, error: str | None = None) -> None:
@@ -283,8 +292,13 @@ def _task_snapshot(task_id: str) -> dict | None:
 # ---------------------------------------------------------------------------
 
 def _run_batch_postprocess() -> tuple[bool, str]:
-    """跑批次。串行 subprocess（避免 LLM 並行撞 rate limit）。"""
+    """跑批次。串行 subprocess（避免 LLM 並行撞 rate limit）。
+
+    四支腳本互相獨立，所以**一支失敗不跳過其餘**——舊版第一支掛掉就整批中止，
+    等於一個壞掉的索引順便讓心智圖也不更新。
+    """
     _BATCH_STATE["running"] = True
+    errors: list[str] = []
     try:
         for script in ("gen_mindmap.py", "gen_index.py", "gen_overview.py", "gen_markmap.py"):
             r = subprocess.run(
@@ -293,27 +307,35 @@ def _run_batch_postprocess() -> tuple[bool, str]:
                 capture_output=True, text=True, encoding="utf-8", errors="replace",
             )
             if r.returncode != 0:
-                return False, f"{script} 失敗: {r.stderr[-400:]}"
-        return True, ""
+                detail = (r.stderr or r.stdout or "").strip()[-300:]
+                errors.append(f"{script}: {detail}")
+                log.error("批次後處理 %s 失敗（摘要已存好，不影響）：%s", script, detail)
+        return (not errors), "；".join(errors)
     finally:
         _BATCH_STATE["running"] = False
         _BATCH_STATE["last_finished_at"] = datetime.now(timezone.utc).isoformat()
+        _BATCH_STATE["last_error"] = "；".join(errors) or None
 
 
-def _finalise_waiting_tasks(ok: bool, err: str) -> None:
-    """把所有 status='waiting_batch' 的 task 結尾標 done / error。"""
+def _finalise_waiting_tasks(task_ids: set[str], ok: bool, err: str) -> None:
+    """結算**這一輪**的 task。
+
+    `.md` / `.srt` 已經落盤 = 這個 task 成功。批次後處理（索引／心智圖）失敗是
+    全域狀態，**不倒灌成 task 失敗**——2026-08-23 實際踩到：一篇舊摘要的標籤
+    害 gen_index 崩潰，於是剛剛明明成功產出的摘要在畫面上被標成紅色失敗。
+    另外只結算本輪的 task id：批次執行期間新提交的 task 不該被上一輪提前結案。
+    """
     now = datetime.now(timezone.utc).isoformat()
     with _TASKS_LOCK:
-        for t in _TASKS.values():
-            if t["status"] == "waiting_batch":
-                if ok:
-                    t["status"] = "done"
-                    t["step_index"] = TOTAL_STEPS
-                    t["current_step"] = TASK_STEP_NAMES[-1]
-                else:
-                    t["status"] = "error"
-                    t["error"] = f"批次後處理失敗：{err}"
+        for tid in task_ids:
+            t = _TASKS.get(tid)
+            if t and t["status"] == "waiting_batch":
+                t["status"] = "done"
+                t["step_index"] = TOTAL_STEPS
+                t["current_step"] = TASK_STEP_NAMES[-1]
                 t["finished_at"] = now
+    if not ok:
+        log.warning("批次後處理有失敗，但 %d 個 task 的摘要都已寫好：%s", len(task_ids), err)
 
 
 # ---------------------------------------------------------------------------
@@ -331,6 +353,7 @@ def _run_one_task(task_id: str, url: str) -> None:
         with _PARALLEL_SEM:
             try:
                 _set_status(task_id, "running")
+                log.info("task=%s 開始 url=%s", task_id, url)
 
                 # Step 1: 下載
                 _set_step(task_id, 1)
@@ -374,10 +397,15 @@ def _run_one_task(task_id: str, url: str) -> None:
                         t["yt_title"] = yt_title
 
                 _set_status(task_id, "waiting_batch")
+                with _ROUND_LOCK:
+                    _ROUND_TASKS.add(task_id)
                 individual_ok = True
+                log.info("task=%s 個別階段完成 filename=%s", task_id, result["filename"])
 
             except Exception as e:
-                traceback.print_exc()
+                # log.exception 同時寫紀錄檔與 console（原本的 print_exc 只進 console，
+                # 視窗一關就查不到 —— 這正是 2026-08-23 查不出下載為何失敗的原因）
+                log.exception("task=%s 失敗 url=%s", task_id, url)
                 _set_status(task_id, "error", f"{type(e).__name__}: {e}")
                 return  # finally 仍會跑 _PENDING -= 1
     finally:
@@ -389,9 +417,12 @@ def _run_one_task(task_id: str, url: str) -> None:
         if is_last:
             # 至少有一個個別階段成功，才需要跑批次（gen_mindmap 等會掃 .md 補處理）
             # 即使全部失敗也跑一次無害（gen_index 會列出舊狀態）
+            with _ROUND_LOCK:  # 先鎖定本輪成員，批次期間新進的算下一輪
+                round_ids = set(_ROUND_TASKS)
+                _ROUND_TASKS.clear()
             with _BATCH_LOCK:
                 ok, err = _run_batch_postprocess()
-            _finalise_waiting_tasks(ok, err)
+            _finalise_waiting_tasks(round_ids, ok, err)
 
 
 # ---------------------------------------------------------------------------
@@ -495,6 +526,7 @@ def tasks():
         "batch": {
             "running": _BATCH_STATE["running"],
             "last_finished_at": _BATCH_STATE["last_finished_at"],
+            "last_error": _BATCH_STATE["last_error"],
         },
         "limits": {
             "parallel": PARALLEL_LIMIT,

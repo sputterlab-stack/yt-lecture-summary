@@ -130,7 +130,8 @@ skip_files:
   ],
   "batch": {
     "running": false,
-    "last_finished_at": null | "ISO 8601"
+    "last_finished_at": null | "ISO 8601",
+    "last_error": null | "gen_index.py: <stderr 尾段>；…"   // 批次後處理失敗的彙總
   },
   "limits": { "parallel": 3, "deepseek": 3 }
 }
@@ -255,13 +256,23 @@ running (step 1: 下載) → step 2: Whisper → step 3: DeepSeek → step 4: �
   ▼ 釋出 sem
 waiting_batch (step 4 done，等 _PENDING == 0 觸發批次)
   │
-  ▼ 批次成功
+  ▼ 批次跑完（不論成敗）
 done (step 5)
-  │
-  └─ 失敗：error (帶 message)
+
+error 只來自 step 1-4 的例外（下載 / Whisper / DeepSeek / 寫檔）
 ```
 
-`_PENDING` counter 在 submit 時 += N，每 task `finally` 區塊 -= 1；歸零者觸發 `_run_batch_postprocess()`，跑完 `_finalise_waiting_tasks()` 把所有 `waiting_batch` 標 done / error。
+`_PENDING` counter 在 submit 時 += N，每 task `finally` 區塊 -= 1；歸零者觸發 `_run_batch_postprocess()`，跑完 `_finalise_waiting_tasks(round_ids, ...)`。
+
+**⚠️ 2026-08-23 起的語意（改過，別照舊版理解）**：
+
+- **`.md` / `.srt` 落盤 = 這個 task 成功。** 批次後處理（索引／心智圖）失敗**不再**把 task 標成 error，
+  只寫進 `batch.last_error` 與 `outputs/logs/app.log`，前端顯示一行提示。
+  舊行為的實害：2026-08-23 一篇舊摘要的純數字標籤讓 `gen_index.py` 崩潰，
+  於是**每一次轉檔的成功摘要都被標成紅色失敗**，而且從 08-16 起就是這樣。
+- **四支批次腳本互相獨立，一支失敗不跳過其餘**（舊版第一支掛掉就整批中止）。
+- **只結算本輪 task**：`_ROUND_TASKS` 在進入 `waiting_batch` 時登記，觸發批次時鎖定並清空，
+  批次期間新提交的 task 屬於下一輪，不會被提前結案。
 
 ## 6. 並行控制
 

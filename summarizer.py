@@ -106,7 +106,9 @@ def write_summary(result: dict, source_meta: dict, output_root: Path) -> Path:
         out_path = summaries_dir / f"{base_name}_{ts}.md"
 
     generated_at = datetime.now(timezone.utc).isoformat()
-    tags_str = ", ".join(result["tags"]) if result["tags"] else ""
+    # 每個標籤都加引號：不加的話「2026」這種純數字標籤寫進去是裸 scalar，
+    # 讀回來會變成 int，下游 join 就炸（2026-08-23 讓整批後處理掛掉的就是這個）
+    tags_str = ", ".join(_yaml_quote(str(t)) for t in result["tags"]) if result["tags"] else ""
 
     subcategory_line = f"subcategory: {result['subcategory']}\n" if result.get("subcategory") else ""
     thesis_line = f"thesis: {_yaml_quote(result['thesis'])}\n" if result.get("thesis") else ""

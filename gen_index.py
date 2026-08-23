@@ -46,7 +46,8 @@ def collect_entries(taxonomy_cfg: dict) -> list[dict]:
             "path": md.name,
             "category": cat,
             "subcategory": fm.get("subcategory") or "",
-            "tags": fm.get("tags") or [],
+            # 純數字標籤（如 2026）YAML 會讀成 int，join 會炸 —— 與 web_server.py 同樣在邊界轉字串
+            "tags": [str(t) for t in (fm.get("tags") or [])],
             "speaker": fm.get("speaker") or "未知",
             "duration": fm.get("duration") or "-",
             "generated_at": str(fm.get("generated_at") or ""),
